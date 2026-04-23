@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "647312247694",
+    "project_id": "kekefit-c2fdc",
+    "storage_bucket": "kekefit-c2fdc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:647312247694:android:4e4e0842703d11bbc132df",
+        "android_client_info": {
+          "package_name": "com.pec.kekefit"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "647312247694-7mmlei9pqqu5ra4d4mr6avkpeueaqs6j.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.pec.kekefit",
+            "certificate_hash": "4c2fe14413ff65995b8c355eb32133cc5c1cc616"
+          }
+        },
+        {
+          "client_id": "647312247694-0t59as8jcbstfggglvi53jo0r80sncm5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCl8awfPFy4pWrkCrgvcww-_y_5fUJBXY0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "647312247694-0t59as8jcbstfggglvi53jo0r80sncm5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
