@@ -2,17 +2,39 @@ package com.pec.kekefit
 
 import android.app.Activity
 import android.app.DatePickerDialog
+import android.graphics.BitmapFactory
 import android.content.Context
 import android.content.ContextWrapper
 import android.os.Bundle
 import android.util.Log
 import android.util.Patterns
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.animateContentSize
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,8 +91,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -406,7 +430,7 @@ fun AppPrincipal() {
                     .background(FondoVerdeClaro),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = VerdePrincipal)
+                IndicadorCargaVerde()
             }
         }
 
@@ -443,6 +467,7 @@ fun AppPrincipal() {
 
         Pantalla.HOME -> PantallaHomeProfesional(
             usuario = usuario,
+            userPhotoUrl = auth.currentUser?.photoUrl?.toString(),
             bienvenidaPendiente = bienvenidaPendiente,
             onConsumirBienvenida = {
                 val uid = auth.currentUser?.uid ?: return@PantallaHomeProfesional
@@ -801,9 +826,8 @@ fun PantallaAcceso(
                 if (cargando) {
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.CenterHorizontally),
-                        color = VerdePrincipal
+                    IndicadorCargaVerde(
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
                     )
                 }
 
@@ -1041,7 +1065,7 @@ fun PantallaFormularioPerfil(
 
                 when {
                     cargandoRestricciones -> {
-                        CircularProgressIndicator(color = VerdePrincipal)
+                        IndicadorCargaVerde()
                     }
 
                     errorRestricciones.isNotBlank() -> {
@@ -1209,16 +1233,121 @@ fun PantallaFormularioPerfil(
     }
 }
 
+
+
+@Composable
+fun IndicadorCargaVerde(
+    modifier: Modifier = Modifier,
+    size: Int = 46
+) {
+    val transition = rememberInfiniteTransition(label = "spinnerVerde")
+    val rotacion by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = 950,
+                easing = LinearEasing
+            ),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotacionSpinner"
+    )
+
+    Box(
+        modifier = modifier
+            .size(size.dp)
+            .rotate(rotacion),
+        contentAlignment = Alignment.Center
+    ) {
+        val radio = (size / 2.7f).dp
+
+        repeat(8) { index ->
+            val alpha = 0.25f + (index * 0.09f)
+
+            Box(
+                modifier = Modifier
+                    .size(7.dp)
+                    .rotate(index * 45f)
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .size(7.dp)
+                        .alpha(alpha.coerceIn(0.25f, 1f)),
+                    shape = CircleShape,
+                    color = VerdePrincipal
+                ) {}
+            }
+
+            Spacer(modifier = Modifier.size(radio))
+        }
+    }
+}
+
+@Composable
+fun AvatarUsuario(userPhotoUrl: String?) {
+    var imagen by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+
+    LaunchedEffect(userPhotoUrl) {
+        imagen = null
+
+        if (!userPhotoUrl.isNullOrBlank()) {
+            try {
+                imagen = withContext(Dispatchers.IO) {
+                    val connection = URL(userPhotoUrl).openConnection() as HttpURLConnection
+                    connection.connectTimeout = 5000
+                    connection.readTimeout = 5000
+
+                    try {
+                        BitmapFactory.decodeStream(connection.inputStream)
+                    } finally {
+                        connection.disconnect()
+                    }
+                }
+            } catch (e: Exception) {
+                imagen = null
+            }
+        }
+    }
+
+    Surface(
+        modifier = Modifier
+            .size(38.dp)
+            .clip(CircleShape)
+            .border(1.dp, Color.White.copy(alpha = 0.55f), CircleShape),
+        shape = CircleShape,
+        color = Color.White.copy(alpha = 0.18f)
+    ) {
+        if (imagen != null) {
+            Image(
+                bitmap = imagen!!.asImageBitmap(),
+                contentDescription = "Foto de cuenta",
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = "Cuenta",
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun PantallaHomeProfesional(
     usuario: UsuarioPerfil,
+    userPhotoUrl: String?,
     bienvenidaPendiente: Boolean,
     onConsumirBienvenida: () -> Unit,
     onIrPlan: () -> Unit,
     onIrPerfil: () -> Unit,
     onCerrarSesion: () -> Unit
 ) {
-    val auth = FirebaseAuth.getInstance()
     val resultado = calcularPlanNutricional(usuario)
 
     var mensaje by remember { mutableStateOf("") }
@@ -1244,7 +1373,7 @@ fun PantallaHomeProfesional(
                         listOf(VerdeMuyOscuro, Color.Black, VerdePrincipal)
                     )
                 )
-                .padding(20.dp)
+                .padding(start = 20.dp, end = 20.dp, top = 42.dp, bottom = 20.dp)
         ) {
             Column {
                 Row(
@@ -1252,17 +1381,25 @@ fun PantallaHomeProfesional(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.Top
                 ) {
-                    Column {
-                        Text(
-                            text = if (bienvenidaPendiente) {
-                                "¡Bienvenido! ${usuario.nombre} a Keke Fit"
-                            } else {
-                                "Hola, ${usuario.nombre}"
-                            },
-                            color = Color.White,
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (bienvenidaPendiente) {
+                                    "¡Bienvenido! ${usuario.nombre} a Keke Fit"
+                                } else {
+                                    "Hola, ${usuario.nombre}"
+                                },
+                                color = Color.White,
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            AvatarUsuario(userPhotoUrl = userPhotoUrl)
+                        }
 
                         Text(
                             text = "Seguimos construyendo tus hábitos",
@@ -1373,6 +1510,7 @@ fun PantallaHomeProfesional(
 
             OutlinedButton(
                 onClick = {
+                    val auth = FirebaseAuth.getInstance()
                     val emailActual = auth.currentUser?.email
 
                     if (emailActual.isNullOrBlank()) {
@@ -1675,7 +1813,7 @@ fun PantallaPlanComidas(
                             .padding(24.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(color = VerdePrincipal)
+                        IndicadorCargaVerde()
                     }
                 }
 
@@ -1748,15 +1886,28 @@ fun PantallaPlanComidas(
 
                     diasSemana.forEachIndexed { diaIndex, dia ->
                         val abierto = diaAbierto == dia
+                        val colorTarjeta by animateColorAsState(
+                            targetValue = if (abierto) Color.White else Color(0xFFEAF7EF),
+                            label = "colorTarjetaDia"
+                        )
+                        val elevacionTarjeta by animateDpAsState(
+                            targetValue = if (abierto) 8.dp else 2.dp,
+                            label = "elevacionTarjetaDia"
+                        )
 
                         Card(
                             shape = RoundedCornerShape(24.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (abierto) Color.White else Color(0xFFEAF7EF)
-                            ),
+                            colors = CardDefaults.cardColors(containerColor = colorTarjeta),
+                            elevation = CardDefaults.cardElevation(defaultElevation = elevacionTarjeta),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(bottom = 12.dp)
+                                .animateContentSize(
+                                    animationSpec = tween(
+                                        durationMillis = 420,
+                                        easing = FastOutSlowInEasing
+                                    )
+                                )
                         ) {
                             Column {
                                 Row(
@@ -1791,7 +1942,37 @@ fun PantallaPlanComidas(
                                     )
                                 }
 
-                                if (abierto) {
+                                AnimatedVisibility(
+                                    visible = abierto,
+                                    enter = fadeIn(
+                                        animationSpec = tween(durationMillis = 280)
+                                    ) + expandVertically(
+                                        animationSpec = tween(
+                                            durationMillis = 420,
+                                            easing = FastOutSlowInEasing
+                                        )
+                                    ) + slideInVertically(
+                                        animationSpec = tween(
+                                            durationMillis = 420,
+                                            easing = FastOutSlowInEasing
+                                        ),
+                                        initialOffsetY = { fullHeight -> -fullHeight / 2 }
+                                    ),
+                                    exit = fadeOut(
+                                        animationSpec = tween(durationMillis = 220)
+                                    ) + shrinkVertically(
+                                        animationSpec = tween(
+                                            durationMillis = 360,
+                                            easing = FastOutSlowInEasing
+                                        )
+                                    ) + slideOutVertically(
+                                        animationSpec = tween(
+                                            durationMillis = 360,
+                                            easing = FastOutSlowInEasing
+                                        ),
+                                        targetOffsetY = { fullHeight -> -fullHeight / 2 }
+                                    )
+                                ) {
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -1939,24 +2120,34 @@ fun TarjetaMetrica(
 
 @Preview(showBackground = true, showSystemUi = true)
 @Composable
-fun PreviewPantallaHome() {
-    PantallaHomeProfesional(
-        usuario = UsuarioPerfil(
-            nombre = "Luca",
-            apellido = "Gómez",
-            fechaNacimiento = "10/08/2007",
-            edad = 18,
-            alturaCm = 175,
-            pesoKg = 72.0,
-            genero = "Masculino",
-            restricciones = setOf("Sin mani"),
-            meta = "Ganar músculo",
-            actividad = "Moderada"
-        ),
-        bienvenidaPendiente = true,
-        onConsumirBienvenida = {},
-        onIrPlan = {},
-        onIrPerfil = {},
-        onCerrarSesion = {}
-    )
+fun PreviewPantallaHomeProfesional() {
+    MaterialTheme(
+        colorScheme = lightColorScheme(
+            primary = VerdePrincipal,
+            secondary = VerdeSecundario,
+            background = FondoVerdeClaro,
+            surface = Color.White
+        )
+    ) {
+        PantallaHomeProfesional(
+            usuario = UsuarioPerfil(
+                nombre = "Juan",
+                apellido = "Gómez",
+                fechaNacimiento = "10/04/2006",
+                edad = 18,
+                alturaCm = 170,
+                pesoKg = 70.0,
+                genero = "Masculino",
+                restricciones = setOf("Sin azucar", "Sin lactosa"),
+                meta = "Mantener peso",
+                actividad = "Moderada"
+            ),
+            userPhotoUrl = null,
+            bienvenidaPendiente = false,
+            onConsumirBienvenida = {},
+            onIrPlan = {},
+            onIrPerfil = {},
+            onCerrarSesion = {}
+        )
+    }
 }
