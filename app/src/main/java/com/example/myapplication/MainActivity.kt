@@ -5,6 +5,7 @@ import android.app.DatePickerDialog
 import android.content.Context
 import android.content.ContextWrapper
 import android.os.Bundle
+import android.util.Log
 import android.util.Patterns
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -147,6 +148,10 @@ data class ComidaPlan(
     val nombre: String,
     val calorias: Int,
     val tipo: String,
+    val proteinas: Int = 0,
+    val carbohidratos: Int = 0,
+    val grasas: Int = 0,
+    val restricciones: List<String> = emptyList(),
     val ingredientes: List<String> = emptyList()
 )
 
@@ -170,13 +175,12 @@ suspend fun leerTablaSupabase(tabla: String): JSONArray = withContext(Dispatcher
         connection.setRequestProperty("Accept", "application/json")
 
         val code = connection.responseCode
-        val stream = if (code in 200..299) {
-            connection.inputStream
-        } else {
-            connection.errorStream
-        }
-
+        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
         val body = stream.bufferedReader().use { it.readText() }
+
+        Log.d("SUPABASE_DEBUG", "Tabla: $tabla")
+        Log.d("SUPABASE_DEBUG", "Código: $code")
+        Log.d("SUPABASE_DEBUG", "Respuesta: $body")
 
         if (code !in 200..299) {
             throw Exception("Supabase respondió error $code: $body")
@@ -186,6 +190,13 @@ suspend fun leerTablaSupabase(tabla: String): JSONArray = withContext(Dispatcher
     } finally {
         connection.disconnect()
     }
+}
+
+fun separarRestricciones(texto: String): List<String> {
+    return texto
+        .split(",", ";")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
 }
 
 suspend fun obtenerComidasDesdeSupabase(): List<ComidaPlan> {
@@ -198,6 +209,11 @@ suspend fun obtenerComidasDesdeSupabase(): List<ComidaPlan> {
         val nombre = obj.optString("nombre4", "")
         val calorias = obj.optInt("calorias4", 0)
         val tipo = obj.optString("tipo4", "")
+        val proteinas = obj.optInt("proteinas_g4", 0)
+        val carbohidratos = obj.optInt("carbohidratos_g4", 0)
+        val grasas = obj.optInt("grasas_g4", 0)
+        val restriccionesTexto = obj.optString("restricciones4", "")
+        val restricciones = separarRestricciones(restriccionesTexto)
 
         if (nombre.isNotBlank()) {
             lista.add(
@@ -205,7 +221,11 @@ suspend fun obtenerComidasDesdeSupabase(): List<ComidaPlan> {
                     nombre = nombre,
                     calorias = calorias,
                     tipo = tipo,
-                    ingredientes = listOf(nombre.lowercase(), tipo.lowercase())
+                    proteinas = proteinas,
+                    carbohidratos = carbohidratos,
+                    grasas = grasas,
+                    restricciones = restricciones,
+                    ingredientes = listOf(nombre.lowercase(), tipo.lowercase(), restriccionesTexto.lowercase())
                 )
             )
         }
@@ -1459,22 +1479,97 @@ fun calcularPlanNutricional(usuario: UsuarioPerfil): ResultadoNutricional {
     )
 }
 
-val ingredientesPorRestriccion = mapOf(
-    "Sin gluten" to listOf("tostadas", "avena", "granola", "pan", "harina", "fideos"),
-    "Celiaquía" to listOf("tostadas", "avena", "granola", "pan", "harina", "fideos"),
-    "Sin tacc" to listOf("tostadas", "avena", "granola", "pan", "harina", "fideos"),
-    "Sin lactosa" to listOf("yogur", "leche", "queso"),
-    "Sin mariscos" to listOf("mariscos"),
-    "Sin frutos secos" to listOf("frutos secos", "mani"),
-    "Sin mani" to listOf("mani"),
-    "Sin huevo" to listOf("huevo", "omelette"),
-    "Sin pescado" to listOf("pescado"),
-    "Vegano" to listOf("huevo", "yogur", "leche", "queso", "pollo", "carne", "pescado", "mariscos"),
-    "Vegetariano" to listOf("pollo", "carne", "pescado", "mariscos"),
-    "Sin azucar" to listOf("azucar"),
-    "Bajo sodio" to listOf("sal"),
-    "Aceites reducidos" to listOf("aceite")
-)
+fun normalizarRestriccion(texto: String): String {
+    return texto.lowercase()
+        .replace("á", "a")
+        .replace("é", "e")
+        .replace("í", "i")
+        .replace("ó", "o")
+        .replace("ú", "u")
+        .trim()
+}
+
+fun colorPorTipoComida(tipo: String): Color {
+    return when (normalizarRestriccion(tipo)) {
+        "desayuno" -> Color(0xFFDCFCE7)
+        "almuerzo" -> Color(0xFF86EFAC)
+        "merienda" -> Color(0xFF4ADE80)
+        "cena" -> Color(0xFF15803D)
+        else -> Color(0xFFE5E7EB)
+    }
+}
+
+fun colorTextoPorTipoComida(tipo: String): Color {
+    return when (normalizarRestriccion(tipo)) {
+        "cena" -> Color.White
+        else -> VerdeMuyOscuro
+    }
+}
+
+fun tituloTipoComida(tipo: String): String {
+    return when (normalizarRestriccion(tipo)) {
+        "desayuno" -> "Desayuno"
+        "almuerzo" -> "Almuerzo"
+        "merienda" -> "Merienda"
+        "cena" -> "Cena"
+        else -> tipo.replaceFirstChar { it.uppercase() }
+    }
+}
+
+@Composable
+fun TarjetaComidaDelDia(
+    tipo: String,
+    comida: ComidaPlan?
+) {
+    val colorFondo = colorPorTipoComida(tipo)
+    val colorTexto = colorTextoPorTipoComida(tipo)
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = colorFondo),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 10.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = tituloTipoComida(tipo),
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                color = colorTexto
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            if (comida == null) {
+                Text(
+                    text = "No hay opciones disponibles para este tipo de comida.",
+                    color = colorTexto.copy(alpha = 0.8f)
+                )
+            } else {
+                Text(
+                    text = comida.nombre,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = colorTexto
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = "${comida.calorias} kcal",
+                    color = colorTexto
+                )
+
+                Text(
+                    text = "Proteínas: ${comida.proteinas} g | Carbohidratos: ${comida.carbohidratos} g | Grasas: ${comida.grasas} g",
+                    color = colorTexto.copy(alpha = 0.85f),
+                    fontSize = 12.sp
+                )
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1487,6 +1582,7 @@ fun PantallaPlanComidas(
     var todasLasComidas by remember { mutableStateOf<List<ComidaPlan>>(emptyList()) }
     var cargandoComidas by remember { mutableStateOf(true) }
     var errorComidas by remember { mutableStateOf("") }
+    var diaAbierto by remember { mutableStateOf("Lunes") }
 
     LaunchedEffect(Unit) {
         try {
@@ -1500,16 +1596,41 @@ fun PantallaPlanComidas(
         }
     }
 
-    val comidas = todasLasComidas.filterNot { comida ->
-        usuario.restricciones.any { restriccion ->
-            val ingredientesBloqueados = ingredientesPorRestriccion[restriccion] ?: emptyList()
+    val restriccionesDisponiblesEnComidas = todasLasComidas
+        .flatMap { it.restricciones }
+        .map { normalizarRestriccion(it) }
+        .toSet()
 
-            ingredientesBloqueados.any { ingrediente ->
-                comida.nombre.contains(ingrediente, ignoreCase = true) ||
-                        comida.ingredientes.any { item ->
-                            item.contains(ingrediente, ignoreCase = true)
-                        }
+    val restriccionesUsuarioValidas = usuario.restricciones
+        .map { normalizarRestriccion(it) }
+        .filter { it in restriccionesDisponiblesEnComidas }
+
+    val comidasFiltradas = if (restriccionesUsuarioValidas.isEmpty()) {
+        todasLasComidas
+    } else {
+        todasLasComidas.filter { comida ->
+            val restriccionesComida = comida.restricciones.map { normalizarRestriccion(it) }
+            restriccionesUsuarioValidas.all { restriccion ->
+                restriccion in restriccionesComida
             }
+        }
+    }
+
+    val diasSemana = listOf(
+        "Lunes",
+        "Martes",
+        "Miércoles",
+        "Jueves",
+        "Viernes",
+        "Sábado",
+        "Domingo"
+    )
+
+    val tiposComida = listOf("desayuno", "almuerzo", "merienda", "cena")
+
+    val comidasPorTipo = tiposComida.associateWith { tipo ->
+        comidasFiltradas.filter { comida ->
+            normalizarRestriccion(comida.tipo) == tipo
         }
     }
 
@@ -1571,7 +1692,20 @@ fun PantallaPlanComidas(
                     }
                 }
 
-                comidas.isEmpty() -> {
+                todasLasComidas.isEmpty() -> {
+                    Card(
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "No hay comidas cargadas en Supabase.",
+                            modifier = Modifier.padding(16.dp),
+                            color = Color.Gray
+                        )
+                    }
+                }
+
+                comidasFiltradas.isEmpty() -> {
                     Card(
                         shape = RoundedCornerShape(20.dp),
                         modifier = Modifier.fillMaxWidth()
@@ -1585,35 +1719,99 @@ fun PantallaPlanComidas(
                 }
 
                 else -> {
-                    comidas.forEach { comida ->
+                    Text(
+                        text = "Plan semanal",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp,
+                        color = VerdeMuyOscuro
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = "Tocá un día para desplegar su desayuno, almuerzo, merienda y cena.",
+                        color = VerdeOscuro,
+                        fontSize = 14.sp
+                    )
+
+                    if (usuario.restricciones.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Text(
+                            text = "Restricciones seleccionadas: ${usuario.restricciones.joinToString(", ")}",
+                            color = Color.Gray,
+                            fontSize = 13.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    diasSemana.forEachIndexed { diaIndex, dia ->
+                        val abierto = diaAbierto == dia
+
                         Card(
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(24.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (abierto) Color.White else Color(0xFFEAF7EF)
+                            ),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(bottom = 10.dp)
+                                .padding(bottom = 12.dp)
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text(
-                                        text = comida.nombre,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                            Column {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            diaAbierto = if (abierto) "" else dia
+                                        }
+                                        .padding(18.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = dia,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 20.sp,
+                                            color = VerdeMuyOscuro
+                                        )
 
-                                    Text(
-                                        text = comida.tipo,
-                                        color = Color.Gray
+                                        Text(
+                                            text = if (abierto) "Plan desplegado" else "Tocar para ver comidas",
+                                            color = VerdeOscuro,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+
+                                    Icon(
+                                        imageVector = Icons.Default.KeyboardArrowDown,
+                                        contentDescription = null,
+                                        tint = VerdePrincipal
                                     )
                                 }
 
-                                Text(
-                                    text = "${comida.calorias} kcal",
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                                if (abierto) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(start = 14.dp, end = 14.dp, bottom = 14.dp)
+                                    ) {
+                                        tiposComida.forEachIndexed { tipoIndex, tipo ->
+                                            val opciones = comidasPorTipo[tipo].orEmpty()
+                                            val comida = if (opciones.isNotEmpty()) {
+                                                opciones[(diaIndex + tipoIndex) % opciones.size]
+                                            } else {
+                                                null
+                                            }
+
+                                            TarjetaComidaDelDia(
+                                                tipo = tipo,
+                                                comida = comida
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
