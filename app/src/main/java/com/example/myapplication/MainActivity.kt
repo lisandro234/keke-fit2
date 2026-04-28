@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.DatePickerDialog
 import android.content.Context
 import android.content.ContextWrapper
-import android.os.Build
 import android.os.Bundle
 import android.util.Patterns
 import androidx.activity.ComponentActivity
@@ -73,7 +72,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -82,11 +80,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.ImageLoader
-import coil.compose.AsyncImage
-import coil.decode.GifDecoder
-import coil.decode.ImageDecoderDecoder
-import coil.request.ImageRequest
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.firebase.FirebaseApp
@@ -94,8 +87,16 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Calendar
 import kotlin.math.roundToInt
+
+private const val SUPABASE_URL = "https://erwhlxfirpwjdhzfjwbz.supabase.co"
+private const val SUPABASE_KEY = "sb_publishable_G1emvEzrptUBFjDH8hwtzw_9I_PdtQh"
 
 private val VerdePrincipal = Color(0xFF16A34A)
 private val VerdeSecundario = Color(0xFF22C55E)
@@ -158,6 +159,77 @@ data class ResultadoNutricional(
     val recomendacion: String
 )
 
+suspend fun leerTablaSupabase(tabla: String): JSONArray = withContext(Dispatchers.IO) {
+    val url = URL("$SUPABASE_URL/rest/v1/$tabla?select=*")
+    val connection = url.openConnection() as HttpURLConnection
+
+    try {
+        connection.requestMethod = "GET"
+        connection.setRequestProperty("apikey", SUPABASE_KEY)
+        connection.setRequestProperty("Authorization", "Bearer $SUPABASE_KEY")
+        connection.setRequestProperty("Accept", "application/json")
+
+        val code = connection.responseCode
+        val stream = if (code in 200..299) {
+            connection.inputStream
+        } else {
+            connection.errorStream
+        }
+
+        val body = stream.bufferedReader().use { it.readText() }
+
+        if (code !in 200..299) {
+            throw Exception("Supabase respondió error $code: $body")
+        }
+
+        JSONArray(body)
+    } finally {
+        connection.disconnect()
+    }
+}
+
+suspend fun obtenerComidasDesdeSupabase(): List<ComidaPlan> {
+    val json = leerTablaSupabase("comida4")
+    val lista = mutableListOf<ComidaPlan>()
+
+    for (i in 0 until json.length()) {
+        val obj = json.getJSONObject(i)
+
+        val nombre = obj.optString("nombre4", "")
+        val calorias = obj.optInt("calorias4", 0)
+        val tipo = obj.optString("tipo4", "")
+
+        if (nombre.isNotBlank()) {
+            lista.add(
+                ComidaPlan(
+                    nombre = nombre,
+                    calorias = calorias,
+                    tipo = tipo,
+                    ingredientes = listOf(nombre.lowercase(), tipo.lowercase())
+                )
+            )
+        }
+    }
+
+    return lista
+}
+
+suspend fun obtenerCondicionesDesdeSupabase(): List<String> {
+    val json = leerTablaSupabase("condicion4")
+    val lista = mutableListOf<String>()
+
+    for (i in 0 until json.length()) {
+        val obj = json.getJSONObject(i)
+        val nombre = obj.optString("nombre4", "")
+
+        if (nombre.isNotBlank() && !lista.contains(nombre)) {
+            lista.add(nombre)
+        }
+    }
+
+    return lista
+}
+
 fun Context.findActivity(): Activity {
     return when (this) {
         is Activity -> this
@@ -205,9 +277,8 @@ fun cargarPerfilDesdeFirestore(
     onResult: (UsuarioPerfil?, Boolean, Boolean) -> Unit,
     onError: (String) -> Unit
 ) {
-    val db = FirebaseFirestore.getInstance()
-
-    db.collection("usuarios")
+    FirebaseFirestore.getInstance()
+        .collection("usuarios")
         .document(uid)
         .get()
         .addOnSuccessListener { doc ->
@@ -269,7 +340,9 @@ fun AppPrincipal() {
     var usuario by remember { mutableStateOf(UsuarioPerfil()) }
     var bienvenidaPendiente by remember { mutableStateOf(false) }
 
-    LaunchedEffect(auth.currentUser?.uid) {
+    LaunchedEffect(auth.currentUser?.uid, pantallaActual) {
+        if (pantallaActual != Pantalla.CARGANDO) return@LaunchedEffect
+
         val currentUser = auth.currentUser
 
         if (currentUser == null) {
@@ -298,7 +371,7 @@ fun AppPrincipal() {
                     }
                 },
                 onError = { mensajeError ->
-                    errorSesion = "Se inició sesión, pero no se pudo leer tu perfil en Firestore. Revisá reglas/permisos. Detalle: $mensajeError"
+                    errorSesion = "Se inició sesión, pero no se pudo leer tu perfil en Firestore. Detalle: $mensajeError"
                     pantallaActual = Pantalla.ACCESO
                 }
             )
@@ -435,6 +508,7 @@ fun PantallaAcceso(
             }
 
             val credential = GoogleAuthProvider.getCredential(idToken, null)
+
             auth.signInWithCredential(credential)
                 .addOnCompleteListener(activity) { loginTask ->
                     if (loginTask.isSuccessful) {
@@ -444,7 +518,6 @@ fun PantallaAcceso(
                             ?: "Error al iniciar sesión con Google."
                     }
                 }
-
         } catch (e: com.google.android.gms.common.api.ApiException) {
             error = "Google Sign-In falló. Código: ${e.statusCode}"
         } catch (e: Exception) {
@@ -485,49 +558,38 @@ fun PantallaAcceso(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        val imageLoader = remember(context) {
-            ImageLoader.Builder(context)
-                .components {
-                    if (Build.VERSION.SDK_INT >= 28) {
-                        add(ImageDecoderDecoder.Factory())
-                    } else {
-                        add(GifDecoder.Factory())
-                    }
-                }
-                .build()
-        }
-
         Surface(
             modifier = Modifier.size(88.dp),
             shape = CircleShape,
             color = Color.White.copy(alpha = 0.16f)
         ) {
             Box(contentAlignment = Alignment.Center) {
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(R.drawable.keke)
-                        .build(),
-                    imageLoader = imageLoader,
-                    contentDescription = "Logo animado Keke Fit",
-                    modifier = Modifier.size(110.dp),
-                    contentScale = ContentScale.Fit
+                Icon(
+                    imageVector = Icons.Default.Favorite,
+                    contentDescription = "Logo Keke Fit",
+                    tint = Color.White,
+                    modifier = Modifier.size(46.dp)
                 )
             }
         }
 
         Spacer(modifier = Modifier.height(20.dp))
+
         Text(
             text = "Keke Fit",
             fontSize = 34.sp,
             fontWeight = FontWeight.Bold,
             color = Color.White
         )
+
         Spacer(modifier = Modifier.height(8.dp))
+
         Text(
             text = "Nutrición inteligente y progreso real",
             color = VerdeTextoSuave,
             textAlign = TextAlign.Center
         )
+
         Spacer(modifier = Modifier.height(28.dp))
 
         Card(
@@ -600,6 +662,7 @@ fun PantallaAcceso(
                                     user?.sendEmailVerification()
                                         ?.addOnCompleteListener { verifyTask ->
                                             cargando = false
+
                                             if (verifyTask.isSuccessful) {
                                                 auth.signOut()
                                                 mensaje =
@@ -651,7 +714,11 @@ fun PantallaAcceso(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
-                    text = if (modoRegistro) "¿Ya tenés cuenta? Iniciar sesión" else "¿No tenés cuenta? Registrarse",
+                    text = if (modoRegistro) {
+                        "¿Ya tenés cuenta? Iniciar sesión"
+                    } else {
+                        "¿No tenés cuenta? Registrarse"
+                    },
                     color = VerdePrincipal,
                     modifier = Modifier.clickable {
                         modoRegistro = !modoRegistro
@@ -662,6 +729,7 @@ fun PantallaAcceso(
 
                 if (!modoRegistro) {
                     Spacer(modifier = Modifier.height(10.dp))
+
                     Text(
                         text = "Restablecer contraseña",
                         color = VerdePrincipal,
@@ -696,6 +764,7 @@ fun PantallaAcceso(
                         error = ""
                         mensaje = ""
                         cargando = true
+
                         googleClient.signOut().addOnCompleteListener {
                             launcher.launch(googleClient.signInIntent)
                         }
@@ -711,6 +780,7 @@ fun PantallaAcceso(
 
                 if (cargando) {
                     Spacer(modifier = Modifier.height(16.dp))
+
                     CircularProgressIndicator(
                         modifier = Modifier.align(Alignment.CenterHorizontally),
                         color = VerdePrincipal
@@ -719,6 +789,7 @@ fun PantallaAcceso(
 
                 if (mensaje.isNotBlank()) {
                     Spacer(modifier = Modifier.height(16.dp))
+
                     Text(
                         text = mensaje,
                         color = VerdeOscuro,
@@ -728,6 +799,7 @@ fun PantallaAcceso(
 
                 if (error.isNotBlank()) {
                     Spacer(modifier = Modifier.height(16.dp))
+
                     Text(
                         text = error,
                         color = Color.Red,
@@ -764,27 +836,22 @@ fun PantallaFormularioPerfil(
     var error by remember { mutableStateOf("") }
     var mostrarFechaPicker by remember { mutableStateOf(false) }
 
-    val restriccionesDisponibles = listOf(
-        "Diabetes",
-        "Hipertension",
-        "Colesterol alto",
-        "Celiaquía",
-        "Obesidad",
-        "Anemia",
-        "Sin azucar",
-        "Sin gluten",
-        "Sin lactosa",
-        "Bajo sodio",
-        "Vegano",
-        "Vegetariano",
-        "Sin mariscos",
-        "Sin frutos secos",
-        "Sin mani",
-        "Sin huevo",
-        "Sin pescado",
-        "Sin tacc",
-        "Aceites reducidos"
-    )
+    var restriccionesDisponibles by remember { mutableStateOf<List<String>>(emptyList()) }
+    var cargandoRestricciones by remember { mutableStateOf(true) }
+    var errorRestricciones by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        try {
+            restriccionesDisponibles = obtenerCondicionesDesdeSupabase()
+            errorRestricciones = ""
+        } catch (e: Exception) {
+            restriccionesDisponibles = emptyList()
+            errorRestricciones = e.localizedMessage
+                ?: "No se pudieron cargar las condiciones desde Supabase."
+        } finally {
+            cargandoRestricciones = false
+        }
+    }
 
     val metas = listOf("Bajar peso", "Mantener peso", "Subir peso", "Ganar músculo", "Mejorar hábitos")
     val actividades = listOf("Sedentaria", "Ligera", "Moderada", "Alta")
@@ -810,14 +877,33 @@ fun PantallaFormularioPerfil(
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        Text(text = titulo, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = VerdeMuyOscuro)
+        Text(
+            text = titulo,
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold,
+            color = VerdeMuyOscuro
+        )
+
         Spacer(modifier = Modifier.height(6.dp))
-        Text(text = subtitulo, color = VerdeOscuro)
+
+        Text(
+            text = subtitulo,
+            color = VerdeOscuro
+        )
+
         Spacer(modifier = Modifier.height(18.dp))
 
-        Card(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
             Column(modifier = Modifier.padding(18.dp)) {
-                Text("Datos personales", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text(
+                    text = "Datos personales",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp
+                )
+
                 Spacer(modifier = Modifier.height(12.dp))
 
                 OutlinedTextField(
@@ -828,6 +914,7 @@ fun PantallaFormularioPerfil(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+
                 Spacer(modifier = Modifier.height(10.dp))
 
                 OutlinedTextField(
@@ -837,6 +924,7 @@ fun PantallaFormularioPerfil(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+
                 Spacer(modifier = Modifier.height(10.dp))
 
                 OutlinedTextField(
@@ -853,6 +941,7 @@ fun PantallaFormularioPerfil(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Button(
@@ -873,6 +962,7 @@ fun PantallaFormularioPerfil(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+
                 Spacer(modifier = Modifier.height(10.dp))
 
                 OutlinedTextField(
@@ -883,6 +973,7 @@ fun PantallaFormularioPerfil(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+
                 Spacer(modifier = Modifier.height(10.dp))
 
                 OutlinedTextField(
@@ -895,39 +986,88 @@ fun PantallaFormularioPerfil(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Text("Género", fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = "Género",
+                    fontWeight = FontWeight.SemiBold
+                )
+
                 Spacer(modifier = Modifier.height(8.dp))
-                FlowChips(opciones = generos, seleccionada = genero, onSeleccionar = { genero = it })
+
+                FlowChips(
+                    opciones = generos,
+                    seleccionada = genero,
+                    onSeleccionar = { genero = it }
+                )
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Card(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
             Column(modifier = Modifier.padding(18.dp)) {
-                Text("Alergias / condiciones / restricciones", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text(
+                    text = "Alergias / condiciones / restricciones",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp
+                )
+
                 Spacer(modifier = Modifier.height(10.dp))
 
-                restriccionesDisponibles.chunked(2).forEach { fila ->
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        fila.forEach { item ->
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = item in restriccionesSeleccionadas,
-                                    onCheckedChange = { checked ->
-                                        restriccionesSeleccionadas = if (checked) {
-                                            restriccionesSeleccionadas + item
-                                        } else {
-                                            restriccionesSeleccionadas - item
-                                        }
+                when {
+                    cargandoRestricciones -> {
+                        CircularProgressIndicator(color = VerdePrincipal)
+                    }
+
+                    errorRestricciones.isNotBlank() -> {
+                        Text(
+                            text = errorRestricciones,
+                            color = Color.Red,
+                            fontSize = 14.sp
+                        )
+                    }
+
+                    restriccionesDisponibles.isEmpty() -> {
+                        Text(
+                            text = "No hay condiciones cargadas en Supabase.",
+                            color = Color.Gray
+                        )
+                    }
+
+                    else -> {
+                        restriccionesDisponibles.chunked(2).forEach { fila ->
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                fila.forEach { item ->
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = item in restriccionesSeleccionadas,
+                                            onCheckedChange = { checked ->
+                                                restriccionesSeleccionadas = if (checked) {
+                                                    restriccionesSeleccionadas + item
+                                                } else {
+                                                    restriccionesSeleccionadas - item
+                                                }
+                                            }
+                                        )
+
+                                        Text(
+                                            text = item,
+                                            fontSize = 14.sp
+                                        )
                                     }
-                                )
-                                Text(item, fontSize = 14.sp)
+                                }
+
+                                if (fila.size == 1) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
                             }
                         }
                     }
@@ -937,30 +1077,61 @@ fun PantallaFormularioPerfil(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Card(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
             Column(modifier = Modifier.padding(18.dp)) {
-                Text("Objetivo y actividad", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text(
+                    text = "Objetivo y actividad",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp
+                )
+
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Text("Meta", fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = "Meta",
+                    fontWeight = FontWeight.SemiBold
+                )
+
                 Spacer(modifier = Modifier.height(8.dp))
-                FlowChips(opciones = metas, seleccionada = meta, onSeleccionar = { meta = it })
+
+                FlowChips(
+                    opciones = metas,
+                    seleccionada = meta,
+                    onSeleccionar = { meta = it }
+                )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Text("Actividad", fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = "Actividad",
+                    fontWeight = FontWeight.SemiBold
+                )
+
                 Spacer(modifier = Modifier.height(8.dp))
-                FlowChips(opciones = actividades, seleccionada = actividad, onSeleccionar = { actividad = it })
+
+                FlowChips(
+                    opciones = actividades,
+                    seleccionada = actividad,
+                    onSeleccionar = { actividad = it }
+                )
             }
         }
 
         if (error.isNotBlank()) {
             Spacer(modifier = Modifier.height(12.dp))
+
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFFEE2E2)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(text = error, color = Color(0xFF991B1B), modifier = Modifier.padding(14.dp))
+                Text(
+                    text = error,
+                    color = Color(0xFF991B1B),
+                    modifier = Modifier.padding(14.dp)
+                )
             }
         }
 
@@ -975,12 +1146,16 @@ fun PantallaFormularioPerfil(
                 error = when {
                     nombre.isBlank() || apellido.isBlank() || fechaNacimiento.isBlank() ->
                         "Completá nombre, apellido y fecha de nacimiento."
+
                     edadInt == null || edadInt !in 14..90 ->
                         "La edad debe estar entre 14 y 90 años."
+
                     alturaInt == null || alturaInt !in 130..230 ->
                         "La altura debe estar entre 130 y 230 cm."
+
                     pesoDouble == null || pesoDouble < 40 || pesoDouble > 250 ->
                         "El peso debe estar entre 40 y 250 kg."
+
                     else -> ""
                 }
 
@@ -1059,16 +1234,22 @@ fun PantallaHomeProfesional(
                 ) {
                     Column {
                         Text(
-                            text = if (bienvenidaPendiente)
+                            text = if (bienvenidaPendiente) {
                                 "¡Bienvenido! ${usuario.nombre} a Keke Fit"
-                            else
-                                "Hola, ${usuario.nombre}",
+                            } else {
+                                "Hola, ${usuario.nombre}"
+                            },
                             color = Color.White,
                             fontSize = 28.sp,
                             fontWeight = FontWeight.Bold
                         )
-                        Text(text = "Seguimos construyendo tus hábitos", color = VerdeTextoSuave)
+
+                        Text(
+                            text = "Seguimos construyendo tus hábitos",
+                            color = VerdeTextoSuave
+                        )
                     }
+
                     IconButton(onClick = onCerrarSesion) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ExitToApp,
@@ -1099,22 +1280,43 @@ fun PantallaHomeProfesional(
         }
 
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Resumen de hoy", fontWeight = FontWeight.Bold, fontSize = 22.sp)
+            Text(
+                text = "Resumen de hoy",
+                fontWeight = FontWeight.Bold,
+                fontSize = 22.sp
+            )
+
             Spacer(modifier = Modifier.height(12.dp))
 
             TarjetaMetrica("Calorías diarias", "${resultado.calorias} kcal", Icons.Default.Favorite)
+
             Spacer(modifier = Modifier.height(10.dp))
+
             TarjetaMetrica("IMC", "${resultado.imc} (${resultado.estadoImc})", Icons.Default.Info)
+
             Spacer(modifier = Modifier.height(10.dp))
+
             TarjetaMetrica("Proteínas recomendadas", "${resultado.proteinas} g", Icons.Default.Star)
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            Card(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+            Card(
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Column(modifier = Modifier.padding(18.dp)) {
-                    Text("Recomendación", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    Text(
+                        text = "Recomendación",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    )
+
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(resultado.recomendacion, color = VerdeOscuro)
+
+                    Text(
+                        text = resultado.recomendacion,
+                        color = VerdeOscuro
+                    )
                 }
             }
 
@@ -1152,6 +1354,7 @@ fun PantallaHomeProfesional(
             OutlinedButton(
                 onClick = {
                     val emailActual = auth.currentUser?.email
+
                     if (emailActual.isNullOrBlank()) {
                         error = "No se encontró un correo para restablecer la contraseña."
                         mensaje = ""
@@ -1281,30 +1484,39 @@ fun PantallaPlanComidas(
 ) {
     val resultado = calcularPlanNutricional(usuario)
 
-    val todasLasComidas = listOf(
-        ComidaPlan("Avena con banana", 350, "Desayuno", listOf("avena")),
-        ComidaPlan("Tostadas con huevo", 320, "Desayuno", listOf("tostadas", "huevo")),
-        ComidaPlan("Yogur con granola", 250, "Desayuno", listOf("yogur", "granola")),
-        ComidaPlan("Pollo con arroz y ensalada", 620, "Almuerzo", listOf("pollo")),
-        ComidaPlan("Pescado con puré", 540, "Almuerzo", listOf("pescado")),
-        ComidaPlan("Carne magra con verduras", 600, "Almuerzo", listOf("carne")),
-        ComidaPlan("Frutos secos y fruta", 220, "Snack", listOf("frutos secos", "mani")),
-        ComidaPlan("Queso con frutas", 200, "Snack", listOf("queso")),
-        ComidaPlan("Pollo al horno con verduras", 580, "Cena", listOf("pollo")),
-        ComidaPlan("Omelette con ensalada", 410, "Cena", listOf("huevo"))
-    )
+    var todasLasComidas by remember { mutableStateOf<List<ComidaPlan>>(emptyList()) }
+    var cargandoComidas by remember { mutableStateOf(true) }
+    var errorComidas by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        try {
+            todasLasComidas = obtenerComidasDesdeSupabase()
+            errorComidas = ""
+        } catch (e: Exception) {
+            todasLasComidas = emptyList()
+            errorComidas = e.localizedMessage ?: "No se pudieron cargar las comidas desde Supabase."
+        } finally {
+            cargandoComidas = false
+        }
+    }
 
     val comidas = todasLasComidas.filterNot { comida ->
         usuario.restricciones.any { restriccion ->
             val ingredientesBloqueados = ingredientesPorRestriccion[restriccion] ?: emptyList()
+
             ingredientesBloqueados.any { ingrediente ->
-                comida.ingredientes.any { it.contains(ingrediente, ignoreCase = true) }
+                comida.nombre.contains(ingrediente, ignoreCase = true) ||
+                        comida.ingredientes.any { item ->
+                            item.contains(ingrediente, ignoreCase = true)
+                        }
             }
         }
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Plan de comidas") }) }
+        topBar = {
+            TopAppBar(title = { Text("Plan de comidas") })
+        }
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -1314,10 +1526,19 @@ fun PantallaPlanComidas(
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            Card(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+            Card(
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Column(modifier = Modifier.padding(18.dp)) {
-                    Text("Objetivo calórico", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    Text(
+                        text = "Objetivo calórico",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    )
+
                     Spacer(modifier = Modifier.height(8.dp))
+
                     Text("${resultado.calorias} kcal por día")
                     Text("Proteínas: ${resultado.proteinas} g")
                 }
@@ -1325,24 +1546,76 @@ fun PantallaPlanComidas(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            comidas.forEach { comida ->
-                Card(
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 10.dp)
-                ) {
-                    Row(
+            when {
+                cargandoComidas -> {
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Column {
-                            Text(comida.nombre, fontWeight = FontWeight.Bold)
-                            Text(comida.tipo, color = Color.Gray)
+                        CircularProgressIndicator(color = VerdePrincipal)
+                    }
+                }
+
+                errorComidas.isNotBlank() -> {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFEE2E2)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = errorComidas,
+                            color = Color(0xFF991B1B),
+                            modifier = Modifier.padding(14.dp)
+                        )
+                    }
+                }
+
+                comidas.isEmpty() -> {
+                    Card(
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "No hay comidas disponibles para las restricciones seleccionadas.",
+                            modifier = Modifier.padding(16.dp),
+                            color = Color.Gray
+                        )
+                    }
+                }
+
+                else -> {
+                    comidas.forEach { comida ->
+                        Card(
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text(
+                                        text = comida.nombre,
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    Text(
+                                        text = comida.tipo,
+                                        color = Color.Gray
+                                    )
+                                }
+
+                                Text(
+                                    text = "${comida.calorias} kcal",
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
-                        Text("${comida.calorias} kcal", fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -1389,18 +1662,45 @@ fun FlowChips(
 }
 
 @Composable
-fun MiniDato(titulo: String, valor: String, icono: ImageVector) {
+fun MiniDato(
+    titulo: String,
+    valor: String,
+    icono: ImageVector
+) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(icono, null, tint = Color.White)
+        Icon(
+            imageVector = icono,
+            contentDescription = null,
+            tint = Color.White
+        )
+
         Spacer(modifier = Modifier.height(6.dp))
-        Text(titulo, color = VerdeTextoSuave, fontSize = 12.sp)
-        Text(valor, color = Color.White, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+
+        Text(
+            text = titulo,
+            color = VerdeTextoSuave,
+            fontSize = 12.sp
+        )
+
+        Text(
+            text = valor,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
 @Composable
-fun TarjetaMetrica(titulo: String, valor: String, icono: ImageVector) {
-    Card(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+fun TarjetaMetrica(
+    titulo: String,
+    valor: String,
+    icono: ImageVector
+) {
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1413,13 +1713,27 @@ fun TarjetaMetrica(titulo: String, valor: String, icono: ImageVector) {
                 modifier = Modifier.size(52.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(icono, null, tint = VerdeOscuro)
+                    Icon(
+                        imageVector = icono,
+                        contentDescription = null,
+                        tint = VerdeOscuro
+                    )
                 }
             }
+
             Spacer(modifier = Modifier.width(14.dp))
+
             Column {
-                Text(titulo, color = Color.Gray)
-                Text(valor, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                Text(
+                    text = titulo,
+                    color = Color.Gray
+                )
+
+                Text(
+                    text = valor,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 22.sp
+                )
             }
         }
     }
