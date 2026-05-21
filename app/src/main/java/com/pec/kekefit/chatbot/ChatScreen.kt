@@ -29,6 +29,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -98,7 +100,7 @@ fun ChatScreen(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "KekeBot",
+                    text = "KekeBot ${uiState.modelo}",
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
                     fontSize = 22.sp
@@ -109,6 +111,14 @@ fun ChatScreen(
                     color = KekeSoft,
                     fontSize = 13.sp
                 )
+            }
+
+            Button(
+                onClick = { viewModel.cambiarModelo() },
+                colors = ButtonDefaults.buttonColors(containerColor = KekeGreen),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Text(if (uiState.modelo == "2.0") "2.0" else "2.1", color = Color.White, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -164,9 +174,9 @@ fun ChatScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(KekeBubble)
-                .navigationBarsPadding()
                 .imePadding()
-                .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 12.dp),
+                .navigationBarsPadding()
+                .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 8.dp),
             verticalAlignment = Alignment.Bottom
         ) {
             OutlinedTextField(
@@ -202,7 +212,7 @@ fun ChatScreen(
             ) {
                 FloatingActionButton(
                     onClick = { viewModel.clearChat() },
-                    containerColor = Color(0xFFD32F2F),
+                    containerColor = KekeBubble,
                     modifier = Modifier.size(46.dp)
                 ) {
                     Icon(
@@ -289,11 +299,13 @@ private fun LoadingBubble() {
                 .background(KekeBubble, RoundedCornerShape(16.dp))
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            Text(
-                text = "KekeBot está escribiendo...",
-                color = KekeSoft,
-                fontSize = 13.sp
+            androidx.compose.material3.CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                color = KekeGreen,
+                strokeWidth = 2.dp
             )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("KekeBot está pensando...", color = KekeSoft, fontSize = 13.sp)
         }
     }
 }

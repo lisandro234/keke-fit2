@@ -3,6 +3,10 @@ package com.pec.kekefit
 import android.app.Activity
 import android.app.DatePickerDialog
 import android.graphics.BitmapFactory
+import android.graphics.Paint
+import android.graphics.pdf.PdfDocument
+import android.widget.Toast
+import java.io.File
 import android.content.Context
 import android.content.ContextWrapper
 import android.os.Bundle
@@ -56,6 +60,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
@@ -77,6 +83,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -202,6 +209,120 @@ data class RegistroComidaMensual(
     val comidaReal: String = "",
     val comidaCumplida: Boolean = false
 )
+
+data class EstadoRacha(
+    val dias: Int = 0,
+    val activa: Boolean = false,
+    val informeHoyEnviado: Boolean = false,
+    val ultimaFechaInforme: String = ""
+)
+
+fun fechaHoyDispositivo(): String {
+    val c = Calendar.getInstance()
+    val y = c.get(Calendar.YEAR)
+    val m = c.get(Calendar.MONTH) + 1
+    val d = c.get(Calendar.DAY_OF_MONTH)
+    return "%04d-%02d-%02d".format(y, m, d)
+}
+
+fun indiceDiaSemanaActual(): Int {
+    return when (Calendar.getInstance().get(Calendar.DAY_OF_WEEK)) {
+        Calendar.MONDAY -> 0
+        Calendar.TUESDAY -> 1
+        Calendar.WEDNESDAY -> 2
+        Calendar.THURSDAY -> 3
+        Calendar.FRIDAY -> 4
+        Calendar.SATURDAY -> 5
+        else -> 6
+    }
+}
+
+fun nombreDiaSemanaActual(): String = listOf("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")[indiceDiaSemanaActual()]
+
+fun fechaAyerDispositivo(): String {
+    val c = Calendar.getInstance()
+    c.add(Calendar.DAY_OF_MONTH, -1)
+    return "%04d-%02d-%02d".format(c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH))
+}
+
+fun cargarEstadoRacha(context: Context, uid: String): EstadoRacha {
+    val prefs = context.getSharedPreferences("racha_$uid", Context.MODE_PRIVATE)
+    val hoy = fechaHoyDispositivo()
+    val ayer = fechaAyerDispositivo()
+    val ultima = prefs.getString("ultimaFechaInforme", "").orEmpty()
+    val diasGuardados = prefs.getInt("diasRacha", 0)
+
+    return when {
+        ultima == hoy -> EstadoRacha(diasGuardados, true, true, ultima)
+        ultima == ayer -> EstadoRacha(diasGuardados, true, false, ultima)
+        ultima.isBlank() -> EstadoRacha(0, false, false, ultima)
+        else -> EstadoRacha(0, false, false, ultima)
+    }
+}
+
+fun registrarInformeHoy(context: Context, uid: String): EstadoRacha {
+    val prefs = context.getSharedPreferences("racha_$uid", Context.MODE_PRIVATE)
+    val actual = cargarEstadoRacha(context, uid)
+    val hoy = fechaHoyDispositivo()
+    val nuevosDias = if (actual.informeHoyEnviado) actual.dias else if (actual.ultimaFechaInforme == fechaAyerDispositivo()) actual.dias + 1 else 1
+
+    prefs.edit()
+        .putString("ultimaFechaInforme", hoy)
+        .putInt("diasRacha", nuevosDias)
+        .apply()
+
+    return EstadoRacha(nuevosDias, true, true, hoy)
+}
+
+fun guardarInformeLocal(context: Context, uid: String, fecha: String, comidasCumplidas: Set<String>, comidasReales: Map<String, String>) {
+    val prefs = context.getSharedPreferences("informes_$uid", Context.MODE_PRIVATE)
+    prefs.edit()
+        .putStringSet("cumplidas_$fecha", comidasCumplidas)
+        .putString("reales_$fecha", comidasReales.entries.joinToString("||") { "${it.key}::${it.value}" })
+        .apply()
+}
+
+fun cargarCumplidasLocal(context: Context, uid: String, fecha: String): Set<String> {
+    return context.getSharedPreferences("informes_$uid", Context.MODE_PRIVATE)
+        .getStringSet("cumplidas_$fecha", emptySet()).orEmpty()
+}
+
+fun crearPdfInforme(context: Context, uid: String, porcentaje: Int, comidasCumplidas: Set<String>, comidasReales: Map<String, String>) {
+    val pdf = PdfDocument()
+    val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
+    val page = pdf.startPage(pageInfo)
+    val canvas = page.canvas
+    val paint = Paint().apply { textSize = 16f }
+    var y = 48f
+    canvas.drawText("Keke Fit - Informe ${fechaHoyDispositivo()}", 40f, y, paint)
+    y += 32f
+    canvas.drawText("Progreso: $porcentaje%", 40f, y, paint)
+    y += 28f
+    canvas.drawText("Comidas marcadas: ${comidasCumplidas.size}", 40f, y, paint)
+    y += 28f
+    comidasReales.entries.take(22).forEach {
+        canvas.drawText("${it.key}: ${it.value.take(55)}", 40f, y, paint)
+        y += 24f
+    }
+    pdf.finishPage(page)
+    val file = File(context.getExternalFilesDir(null), "keke_informe_${uid}_${fechaHoyDispositivo()}.pdf")
+    file.outputStream().use { pdf.writeTo(it) }
+    pdf.close()
+    Toast.makeText(context, "PDF guardado: ${file.name}", Toast.LENGTH_LONG).show()
+}
+
+@Composable
+fun BotonVolverFlotante(onVolver: () -> Unit) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
+        FloatingActionButton(
+            onClick = onVolver,
+            containerColor = VerdePrincipal,
+            modifier = Modifier.padding(end = 12.dp)
+        ) {
+            Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = Color.White)
+        }
+    }
+}
 
 suspend fun leerTablaSupabase(tabla: String): JSONArray = withContext(Dispatchers.IO) {
     val url = URL("$SUPABASE_URL/rest/v1/$tabla?select=*")
@@ -2486,11 +2607,13 @@ fun PantallaPlanComidas(
     onVolver: () -> Unit
 ) {
     val resultado = calcularPlanNutricional(usuario)
+    val hoyIndex = indiceDiaSemanaActual()
+    val hoyNombre = nombreDiaSemanaActual()
 
     var todasLasComidas by remember { mutableStateOf<List<ComidaPlan>>(emptyList()) }
     var cargandoComidas by remember { mutableStateOf(true) }
     var errorComidas by remember { mutableStateOf("") }
-    var diaAbierto by remember { mutableStateOf("Lunes") }
+    var diaAbierto by remember { mutableStateOf(hoyNombre) }
 
     LaunchedEffect(Unit) {
         try {
@@ -2504,262 +2627,108 @@ fun PantallaPlanComidas(
         }
     }
 
-    val restriccionesDisponiblesEnComidas = todasLasComidas
-        .flatMap { it.restricciones }
-        .map { normalizarRestriccion(it) }
-        .toSet()
-
-    val restriccionesUsuarioValidas = usuario.restricciones
-        .map { normalizarRestriccion(it) }
-        .filter { it in restriccionesDisponiblesEnComidas }
+    val restriccionesDisponiblesEnComidas = todasLasComidas.flatMap { it.restricciones }.map { normalizarRestriccion(it) }.toSet()
+    val restriccionesUsuarioValidas = usuario.restricciones.map { normalizarRestriccion(it) }.filter { it in restriccionesDisponiblesEnComidas }
 
     val comidasFiltradas = if (restriccionesUsuarioValidas.isEmpty()) {
         todasLasComidas
     } else {
         todasLasComidas.filter { comida ->
             val restriccionesComida = comida.restricciones.map { normalizarRestriccion(it) }
-            restriccionesUsuarioValidas.all { restriccion ->
-                restriccion in restriccionesComida
-            }
+            restriccionesUsuarioValidas.all { restriccion -> restriccion in restriccionesComida }
         }
     }
 
-    val diasSemana = listOf(
-        "Lunes",
-        "Martes",
-        "Miércoles",
-        "Jueves",
-        "Viernes",
-        "Sábado",
-        "Domingo"
-    )
-
+    val diasSemana = listOf("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")
     val tiposComida = listOf("desayuno", "almuerzo", "merienda", "cena")
+    val comidasPorTipo = tiposComida.associateWith { tipo -> comidasFiltradas.filter { normalizarRestriccion(it.tipo) == tipo } }
 
-    val comidasPorTipo = tiposComida.associateWith { tipo ->
-        comidasFiltradas.filter { comida ->
-            normalizarRestriccion(comida.tipo) == tipo
-        }
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(title = { Text("Plan de comidas") })
-        }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .padding(paddingValues)
-                .fillMaxSize()
-                .background(FondoVerdeClaro)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState())
-        ) {
-            Card(
-                shape = RoundedCornerShape(24.dp),
-                modifier = Modifier.fillMaxWidth()
+    Scaffold(topBar = { TopAppBar(title = { Text("Plan de comidas") }) }) { paddingValues ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .padding(paddingValues)
+                    .fillMaxSize()
+                    .background(FondoVerdeClaro)
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState())
             ) {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    Text(
-                        text = "Objetivo calórico",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text("${resultado.calorias} kcal por día")
-                    Text("Proteínas: ${resultado.proteinas} g")
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            when {
-                cargandoComidas -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        IndicadorCargaVerde()
+                Card(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Text("Objetivo calórico", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = VerdeMuyOscuro)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("${resultado.calorias} kcal por día", color = VerdeOscuro)
+                        Text("Proteínas: ${resultado.proteinas} g", color = VerdeOscuro)
                     }
                 }
 
-                errorComidas.isNotBlank() -> {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFEE2E2)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = errorComidas,
-                            color = Color(0xFF991B1B),
-                            modifier = Modifier.padding(14.dp)
-                        )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                when {
+                    cargandoComidas -> Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { IndicadorCargaVerde() }
+                    errorComidas.isNotBlank() -> Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F2FE)), modifier = Modifier.fillMaxWidth()) {
+                        Text(errorComidas, color = VerdeMuyOscuro, modifier = Modifier.padding(14.dp))
                     }
-                }
-
-                todasLasComidas.isEmpty() -> {
-                    Card(
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = "No hay comidas cargadas en Supabase.",
-                            modifier = Modifier.padding(16.dp),
-                            color = Color.Gray
-                        )
+                    todasLasComidas.isEmpty() -> Card(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                        Text("No hay comidas cargadas en Supabase.", modifier = Modifier.padding(16.dp), color = Color.Gray)
                     }
-                }
-
-                comidasFiltradas.isEmpty() -> {
-                    Card(
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = "No hay comidas disponibles para las restricciones seleccionadas.",
-                            modifier = Modifier.padding(16.dp),
-                            color = Color.Gray
-                        )
+                    comidasFiltradas.isEmpty() -> Card(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                        Text("No hay comidas disponibles para las restricciones seleccionadas.", modifier = Modifier.padding(16.dp), color = Color.Gray)
                     }
-                }
-
-                else -> {
-                    Text(
-                        text = "Plan semanal",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
-                        color = VerdeMuyOscuro
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Text(
-                        text = "Tocá un día para desplegar sus comidas. Mantené presionada una comida para ver ingredientes.",
-                        color = VerdeOscuro,
-                        fontSize = 14.sp
-                    )
-
-                    if (usuario.restricciones.isNotEmpty()) {
+                    else -> {
+                        Text("Plan semanal", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = VerdeMuyOscuro)
                         Spacer(modifier = Modifier.height(6.dp))
+                        Text("Hoy es $hoyNombre. Se despliega automáticamente el día actual y el plan se renueva con la fecha del dispositivo.", color = VerdeOscuro, fontSize = 14.sp)
+                        if (hoyIndex == 6) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Card(colors = CardDefaults.cardColors(containerColor = VerdeTextoSuave), shape = RoundedCornerShape(18.dp)) {
+                                Text("Plan finalizado: esperá hasta el lunes para iniciar una nueva semana.", color = VerdeMuyOscuro, modifier = Modifier.padding(14.dp))
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                        Text(
-                            text = "Restricciones seleccionadas: ${usuario.restricciones.joinToString(", ")}",
-                            color = Color.Gray,
-                            fontSize = 13.sp
-                        )
-                    }
+                        diasSemana.forEachIndexed { diaIndex, dia ->
+                            val abierto = diaAbierto == dia
+                            val esHoy = diaIndex == hoyIndex
+                            val colorTarjeta by animateColorAsState(targetValue = if (abierto) Color.White else Color(0xFFE0F2FE), label = "colorTarjetaDia")
+                            val elevacionTarjeta by animateDpAsState(targetValue = if (abierto) 8.dp else 2.dp, label = "elevacionTarjetaDia")
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    diasSemana.forEachIndexed { diaIndex, dia ->
-                        val abierto = diaAbierto == dia
-                        val colorTarjeta by animateColorAsState(
-                            targetValue = if (abierto) Color.White else Color(0xFFEAF7EF),
-                            label = "colorTarjetaDia"
-                        )
-                        val elevacionTarjeta by animateDpAsState(
-                            targetValue = if (abierto) 8.dp else 2.dp,
-                            label = "elevacionTarjetaDia"
-                        )
-
-                        Card(
-                            shape = RoundedCornerShape(24.dp),
-                            colors = CardDefaults.cardColors(containerColor = colorTarjeta),
-                            elevation = CardDefaults.cardElevation(defaultElevation = elevacionTarjeta),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 12.dp)
-                                .animateContentSize(
-                                    animationSpec = tween(
-                                        durationMillis = 420,
-                                        easing = FastOutSlowInEasing
-                                    )
-                                )
-                        ) {
-                            Column {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            diaAbierto = if (abierto) "" else dia
+                            Card(
+                                shape = RoundedCornerShape(24.dp),
+                                colors = CardDefaults.cardColors(containerColor = colorTarjeta),
+                                elevation = CardDefaults.cardElevation(defaultElevation = elevacionTarjeta),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp).animateContentSize(animationSpec = tween(420, easing = FastOutSlowInEasing))
+                            ) {
+                                Column {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().clickable { diaAbierto = if (abierto) "" else dia }.padding(18.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (esHoy) {
+                                                Surface(shape = CircleShape, color = Color(0xFF22C55E), modifier = Modifier.size(12.dp)) {}
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                            }
+                                            Column {
+                                                Text(if (esHoy) "$dia · HOY" else dia, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = VerdeMuyOscuro)
+                                                Text(if (abierto) "Plan desplegado" else "Tocar para ver comidas", color = VerdeOscuro, fontSize = 13.sp)
+                                            }
                                         }
-                                        .padding(18.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = dia,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 20.sp,
-                                            color = VerdeMuyOscuro
-                                        )
-
-                                        Text(
-                                            text = if (abierto) "Plan desplegado" else "Tocar para ver comidas",
-                                            color = VerdeOscuro,
-                                            fontSize = 13.sp
-                                        )
+                                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = VerdePrincipal)
                                     }
 
-                                    Icon(
-                                        imageVector = Icons.Default.KeyboardArrowDown,
-                                        contentDescription = null,
-                                        tint = VerdePrincipal
-                                    )
-                                }
-
-                                AnimatedVisibility(
-                                    visible = abierto,
-                                    enter = fadeIn(
-                                        animationSpec = tween(durationMillis = 280)
-                                    ) + expandVertically(
-                                        animationSpec = tween(
-                                            durationMillis = 420,
-                                            easing = FastOutSlowInEasing
-                                        )
-                                    ) + slideInVertically(
-                                        animationSpec = tween(
-                                            durationMillis = 420,
-                                            easing = FastOutSlowInEasing
-                                        ),
-                                        initialOffsetY = { fullHeight -> -fullHeight / 2 }
-                                    ),
-                                    exit = fadeOut(
-                                        animationSpec = tween(durationMillis = 220)
-                                    ) + shrinkVertically(
-                                        animationSpec = tween(
-                                            durationMillis = 360,
-                                            easing = FastOutSlowInEasing
-                                        )
-                                    ) + slideOutVertically(
-                                        animationSpec = tween(
-                                            durationMillis = 360,
-                                            easing = FastOutSlowInEasing
-                                        ),
-                                        targetOffsetY = { fullHeight -> -fullHeight / 2 }
-                                    )
-                                ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(start = 14.dp, end = 14.dp, bottom = 14.dp)
+                                    AnimatedVisibility(
+                                        visible = abierto,
+                                        enter = fadeIn(tween(280)) + expandVertically(tween(420, easing = FastOutSlowInEasing)),
+                                        exit = fadeOut(tween(220)) + shrinkVertically(tween(360, easing = FastOutSlowInEasing))
                                     ) {
-                                        tiposComida.forEachIndexed { tipoIndex, tipo ->
-                                            val opciones = comidasPorTipo[tipo].orEmpty()
-                                            val comida = if (opciones.isNotEmpty()) {
-                                                opciones[(diaIndex + tipoIndex) % opciones.size]
-                                            } else {
-                                                null
+                                        Column(modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
+                                            tiposComida.forEachIndexed { tipoIndex, tipo ->
+                                                val opciones = comidasPorTipo[tipo].orEmpty()
+                                                val comida = opciones.getOrNull((diaIndex + tipoIndex + Calendar.getInstance().get(Calendar.WEEK_OF_YEAR)) % opciones.size.coerceAtLeast(1))
+                                                TarjetaComidaDelDia(tipo = tipo, comida = comida)
                                             }
-
-                                            TarjetaComidaDelDia(
-                                                tipo = tipo,
-                                                comida = comida
-                                            )
                                         }
                                     }
                                 }
@@ -2767,24 +2736,13 @@ fun PantallaPlanComidas(
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = onVolver,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp),
-                shape = RoundedCornerShape(18.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = VerdePrincipal)
-            ) {
-                Text("Volver al inicio")
+                Spacer(modifier = Modifier.height(80.dp))
             }
+            BotonVolverFlotante(onVolver)
         }
     }
 }
-
 
 @Composable
 fun TarjetaRachaInforme(
@@ -2850,11 +2808,18 @@ fun PantallaInformeMensual(
     usuario: UsuarioPerfil,
     onVolver: () -> Unit
 ) {
+    val context = LocalContext.current
+    val uid = FirebaseAuth.getInstance().currentUser?.uid ?: "local"
+    val fechaHoy = fechaHoyDispositivo()
+    val hoyIndex = indiceDiaSemanaActual()
+
     var todasLasComidas by remember { mutableStateOf<List<ComidaPlan>>(emptyList()) }
     var cargando by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
-    var comidasCumplidas by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var comidasCumplidas by remember { mutableStateOf(cargarCumplidasLocal(context, uid, fechaHoy)) }
     var comidasReales by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var estadoRacha by remember { mutableStateOf(cargarEstadoRacha(context, uid)) }
+    var diaVisible by remember { mutableStateOf(hoyIndex + 1) }
 
     LaunchedEffect(Unit) {
         try {
@@ -2869,189 +2834,125 @@ fun PantallaInformeMensual(
 
     val tiposComida = listOf("desayuno", "almuerzo", "merienda", "cena")
     val registros = remember(todasLasComidas) {
-        val porTipo = tiposComida.associateWith { tipo ->
-            todasLasComidas.filter { normalizarRestriccion(it.tipo) == tipo }
-        }
-
+        val porTipo = tiposComida.associateWith { tipo -> todasLasComidas.filter { normalizarRestriccion(it.tipo) == tipo } }
         (1..7).flatMap { dia ->
             tiposComida.mapIndexed { index, tipo ->
                 val opciones = porTipo[tipo].orEmpty()
-                val recomendada = if (opciones.isNotEmpty()) {
-                    opciones[(dia + index) % opciones.size].nombre
-                } else {
-                    "Sin comida cargada"
-                }
-
-                RegistroComidaMensual(
-                    dia = dia,
-                    tipo = tipo,
-                    comidaRecomendada = recomendada
-                )
+                val recomendada = if (opciones.isNotEmpty()) opciones[(dia + index + Calendar.getInstance().get(Calendar.WEEK_OF_YEAR)) % opciones.size].nombre else "Sin comida cargada"
+                RegistroComidaMensual(dia = dia, tipo = tipo, comidaRecomendada = recomendada)
             }
         }
     }
 
-    val total = registros.size.coerceAtLeast(1)
-    val progreso = comidasCumplidas.size.toFloat() / total.toFloat()
-    val porcentaje = (progreso * 100).roundToInt()
+    val registrosHoy = registros.filter { it.dia == hoyIndex + 1 }
+    val totalHoy = registrosHoy.size.coerceAtLeast(1)
+    val progresoHoy = registrosHoy.count { "${it.dia}-${it.tipo}" in comidasCumplidas }.toFloat() / totalHoy.toFloat()
+    val porcentaje = (progresoHoy * 100).roundToInt()
+    val puedeEnviar = registrosHoy.isNotEmpty() && registrosHoy.all { "${it.dia}-${it.tipo}" in comidasCumplidas }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(title = { Text("Informe mensual") })
-        }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .padding(paddingValues)
-                .fillMaxSize()
-                .background(FondoVerdeClaro)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState())
-        ) {
-            Card(
-                shape = RoundedCornerShape(24.dp),
-                modifier = Modifier.fillMaxWidth()
+    Scaffold(topBar = { TopAppBar(title = { Text("Informe diario") }) }) { paddingValues ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .padding(paddingValues)
+                    .fillMaxSize()
+                    .background(FondoVerdeClaro)
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState())
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Progreso del mes",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp,
-                            color = VerdeMuyOscuro
-                        )
-
-                        Text(
-                            text = "${comidasCumplidas.size} de $total comidas marcadas",
-                            color = VerdeOscuro
-                        )
-                    }
-
-                    Surface(
-                        modifier = Modifier
-                            .size(76.dp)
-                            .border(6.dp, VerdeSecundario.copy(alpha = 0.35f), CircleShape),
-                        shape = CircleShape,
-                        color = Color.White
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = "$porcentaje%",
-                                fontWeight = FontWeight.Bold,
-                                color = VerdeMuyOscuro
-                            )
+                Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Informe de hoy", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = VerdeMuyOscuro)
+                            Text(if (estadoRacha.informeHoyEnviado) "Ya mandaste el informe. Volvé mañana para mantener tu racha." else "Completalo antes de las 12 de la noche para no perder la racha.", color = VerdeOscuro)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text("Racha: ${estadoRacha.dias} días", color = VerdePrincipal, fontWeight = FontWeight.Bold)
+                        }
+                        Surface(modifier = Modifier.size(76.dp).border(6.dp, VerdeSecundario.copy(alpha = 0.35f), CircleShape), shape = CircleShape, color = Color.White) {
+                            Box(contentAlignment = Alignment.Center) { Text("$porcentaje%", fontWeight = FontWeight.Bold, color = VerdeMuyOscuro) }
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "Al final del mes, esta información queda lista para convertirla a PDF y enviársela al usuario.",
-                    color = VerdeOscuro,
-                    modifier = Modifier.padding(14.dp),
-                    fontSize = 14.sp
-                )
-            }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = {
+                            crearPdfInforme(context, uid, porcentaje, comidasCumplidas, comidasReales)
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = VerdePrincipal)
+                    ) { Text("Convertir a PDF") }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            when {
-                cargando -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        IndicadorCargaVerde()
-                    }
+                    Button(
+                        onClick = {
+                            guardarInformeLocal(context, uid, fechaHoy, comidasCumplidas, comidasReales)
+                            estadoRacha = registrarInformeHoy(context, uid)
+                            Toast.makeText(context, "Informe enviado. Racha actualizada.", Toast.LENGTH_SHORT).show()
+                        },
+                        enabled = puedeEnviar && !estadoRacha.informeHoyEnviado,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = VerdeOscuro)
+                    ) { Text(if (estadoRacha.informeHoyEnviado) "Enviado" else "Enviar informe") }
                 }
 
-                error.isNotBlank() -> {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFEE2E2)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = error,
-                            color = Color(0xFF991B1B),
-                            modifier = Modifier.padding(14.dp)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    (1..7).forEach { dia ->
+                        val esHoy = dia == hoyIndex + 1
+                        FilterChip(
+                            selected = diaVisible == dia,
+                            onClick = { diaVisible = dia },
+                            label = { Text(if (esHoy) "HOY" else "D$dia") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = if (esHoy) Color(0xFFBBF7D0) else VerdeTextoSuave,
+                                selectedLabelColor = VerdeMuyOscuro
+                            )
                         )
                     }
                 }
 
-                else -> {
-                    registros.groupBy { it.dia }.forEach { (dia, comidasDelDia) ->
-                        Text(
-                            text = "Día $dia",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = VerdeMuyOscuro,
-                            modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)
-                        )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                when {
+                    cargando -> Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { IndicadorCargaVerde() }
+                    error.isNotBlank() -> Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F2FE)), modifier = Modifier.fillMaxWidth()) { Text(error, color = VerdeMuyOscuro, modifier = Modifier.padding(14.dp)) }
+                    else -> {
+                        val comidasDelDia = registros.filter { it.dia == diaVisible }
+                        val tituloDia = listOf("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo").getOrElse(diaVisible - 1) { "Día $diaVisible" }
+                        Text(if (diaVisible == hoyIndex + 1) "$tituloDia · HOY" else tituloDia, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = VerdeMuyOscuro, modifier = Modifier.padding(top = 8.dp, bottom = 6.dp))
 
                         comidasDelDia.forEach { registro ->
                             val key = "${registro.dia}-${registro.tipo}"
                             val cumplida = key in comidasCumplidas
                             val comidaReal = comidasReales[key].orEmpty()
-
-                            Card(
-                                shape = RoundedCornerShape(18.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 10.dp)
-                            ) {
+                            Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
                                 Column(modifier = Modifier.padding(14.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
+                                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                         Checkbox(
                                             checked = cumplida,
                                             onCheckedChange = { checked ->
-                                                comidasCumplidas = if (checked) {
-                                                    comidasCumplidas + key
-                                                } else {
-                                                    comidasCumplidas - key
-                                                }
+                                                comidasCumplidas = if (checked) comidasCumplidas + key else comidasCumplidas - key
+                                                guardarInformeLocal(context, uid, fechaHoy, comidasCumplidas, comidasReales)
                                             }
                                         )
-
                                         Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = tituloTipoComida(registro.tipo),
-                                                fontWeight = FontWeight.Bold,
-                                                color = VerdeMuyOscuro
-                                            )
-
-                                            Text(
-                                                text = registro.comidaRecomendada,
-                                                color = VerdeOscuro,
-                                                fontSize = 13.sp
-                                            )
+                                            Text(tituloTipoComida(registro.tipo), fontWeight = FontWeight.Bold, color = VerdeMuyOscuro)
+                                            Text(registro.comidaRecomendada, color = VerdeOscuro, fontSize = 13.sp)
                                         }
+                                        if (cumplida) Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF22C55E))
                                     }
-
                                     if (!cumplida) {
                                         Spacer(modifier = Modifier.height(6.dp))
-
                                         OutlinedTextField(
                                             value = comidaReal,
                                             onValueChange = { nuevoTexto ->
                                                 comidasReales = comidasReales + (key to nuevoTexto)
+                                                guardarInformeLocal(context, uid, fechaHoy, comidasCumplidas, comidasReales + (key to nuevoTexto))
                                             },
                                             label = { Text("Si comiste otra cosa, escribila acá") },
                                             modifier = Modifier.fillMaxWidth(),
@@ -3063,20 +2964,9 @@ fun PantallaInformeMensual(
                         }
                     }
                 }
+                Spacer(modifier = Modifier.height(80.dp))
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = onVolver,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp),
-                shape = RoundedCornerShape(18.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = VerdePrincipal)
-            ) {
-                Text("Volver al inicio")
-            }
+            BotonVolverFlotante(onVolver)
         }
     }
 }
