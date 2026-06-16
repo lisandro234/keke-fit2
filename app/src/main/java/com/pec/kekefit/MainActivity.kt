@@ -5,6 +5,8 @@ import android.app.DatePickerDialog
 import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.widget.Toast
 import java.io.File
 import android.content.Context
@@ -23,6 +25,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.infiniteRepeatable
@@ -50,6 +53,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -96,6 +100,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -132,6 +137,7 @@ import org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Calendar
+import java.util.Locale
 import kotlin.math.roundToInt
 
 private const val SUPABASE_URL = "https://erwhlxfirpwjdhzfjwbz.supabase.co"
@@ -144,6 +150,116 @@ private val VerdeMuyOscuro = Color(0xFF082F49)
 private val FondoVerdeClaro = Color(0xFFF0F9FF)
 private val VerdeTextoSuave = Color(0xFFE0F2FE)
 
+object KekeFitVisualState {
+    var modoOscuro by mutableStateOf(false)
+}
+
+fun prefsTemaKekeFit(context: Context) =
+    context.applicationContext.getSharedPreferences("keke_fit_tema", Context.MODE_PRIVATE)
+
+fun cargarModoOscuro(context: Context): Boolean {
+    return prefsTemaKekeFit(context).getBoolean("modo_oscuro", false)
+}
+
+fun guardarModoOscuro(context: Context, valor: Boolean) {
+    prefsTemaKekeFit(context).edit().putBoolean("modo_oscuro", valor).apply()
+    KekeFitVisualState.modoOscuro = valor
+}
+
+@Composable
+fun modoOscuroActual(): Boolean {
+    val context = LocalContext.current
+
+    LaunchedEffect(Unit) {
+        KekeFitVisualState.modoOscuro = cargarModoOscuro(context)
+    }
+
+    return KekeFitVisualState.modoOscuro
+}
+
+@Composable
+fun fondoPantallaActual(): Color {
+    return if (modoOscuroActual()) Color(0xFF071827) else FondoVerdeClaro
+}
+
+@Composable
+fun tarjetaActual(): Color {
+    return if (modoOscuroActual()) Color(0xFF0F2A3D) else Color.White
+}
+
+@Composable
+fun tarjetaSuaveActual(): Color {
+    return if (modoOscuroActual()) Color(0xFF102F46) else Color(0xFFFFF7ED)
+}
+
+@Composable
+fun textoPrincipalActual(): Color {
+    return if (modoOscuroActual()) Color.White else VerdeMuyOscuro
+}
+
+@Composable
+fun textoSecundarioActual(): Color {
+    return if (modoOscuroActual()) Color(0xFFBAE6FD) else VerdeOscuro
+}
+
+@Composable
+fun IconoFuegoRachaAnimado(
+    activa: Boolean,
+    modifier: Modifier = Modifier,
+    sizeSp: Int = 22
+) {
+    val transition = rememberInfiniteTransition(label = "fuegoRacha")
+    val escala by transition.animateFloat(
+        initialValue = if (activa) 0.92f else 1f,
+        targetValue = if (activa) 1.12f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 620, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "escalaFuegoRacha"
+    )
+    val rotacion by transition.animateFloat(
+        initialValue = if (activa) -4f else 0f,
+        targetValue = if (activa) 4f else 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 480, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "rotacionFuegoRacha"
+    )
+    val alphaIcono by transition.animateFloat(
+        initialValue = if (activa) 0.82f else 0.48f,
+        targetValue = if (activa) 1f else 0.48f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "alphaFuegoRacha"
+    )
+    val movimientoY by transition.animateFloat(
+        initialValue = if (activa) 1.8f else 0f,
+        targetValue = if (activa) -2.8f else 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 540, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "movimientoFuegoRacha"
+    )
+
+    Text(
+        text = if (activa) "🔥" else "♨",
+        modifier = modifier
+            .offset(y = movimientoY.dp)
+            .scale(escala)
+            .rotate(rotacion)
+            .alpha(alphaIcono),
+        color = if (activa) Color.Unspecified else Color(0xFF94A3B8),
+        fontSize = sizeSp.sp,
+        fontWeight = FontWeight.Bold
+    )
+}
+
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -151,13 +267,34 @@ class MainActivity : ComponentActivity() {
         FirebaseApp.initializeApp(this)
 
         setContent {
+            val context = LocalContext.current
+
+            LaunchedEffect(Unit) {
+                KekeFitVisualState.modoOscuro = cargarModoOscuro(context)
+            }
+
+            val modoOscuro = KekeFitVisualState.modoOscuro
+
             MaterialTheme(
-                colorScheme = lightColorScheme(
-                    primary = VerdePrincipal,
-                    secondary = VerdeSecundario,
-                    background = FondoVerdeClaro,
-                    surface = Color.White
-                )
+                colorScheme = if (modoOscuro) {
+                    darkColorScheme(
+                        primary = VerdePrincipal,
+                        secondary = VerdeSecundario,
+                        background = Color(0xFF071827),
+                        surface = Color(0xFF0F2A3D),
+                        onPrimary = Color.White,
+                        onSecondary = Color.White,
+                        onBackground = Color.White,
+                        onSurface = Color.White
+                    )
+                } else {
+                    lightColorScheme(
+                        primary = VerdePrincipal,
+                        secondary = VerdeSecundario,
+                        background = if (KekeFitVisualState.modoOscuro) Color(0xFF071827) else FondoVerdeClaro,
+                        surface = Color.White
+                    )
+                }
             ) {
                 AppPrincipal()
             }
@@ -183,6 +320,7 @@ data class UsuarioPerfil(
 )
 
 data class ComidaPlan(
+    val id: Int = 0,
     val nombre: String,
     val calorias: Int,
     val tipo: String,
@@ -196,6 +334,7 @@ data class ComidaPlan(
 data class ResultadoNutricional(
     val calorias: Int,
     val aguaTexto: String,
+    val vasosMeta: Int,
     val imc: String,
     val estadoImc: String,
     val proteinas: Int,
@@ -208,6 +347,22 @@ data class RegistroComidaMensual(
     val comidaRecomendada: String,
     val comidaReal: String = "",
     val comidaCumplida: Boolean = false
+)
+
+
+
+data class PlanComidaSupabase(
+    val idPlan: Int = 0,
+    val idUsuario: Int = 0,
+    val fecha: String = "",
+    val tipoComida: String = "",
+    val idComida: Int = 0
+)
+
+data class RegistroAguaDia(
+    val fecha: String = fechaHoyDispositivo(),
+    val vasosConsumidos: Int = 0,
+    val vasosMeta: Int = 8
 )
 
 data class EstadoRacha(
@@ -225,6 +380,39 @@ fun fechaHoyDispositivo(): String {
     return "%04d-%02d-%02d".format(y, m, d)
 }
 
+fun reproducirClickSuave(context: Context) {
+    try {
+        val tg = ToneGenerator(AudioManager.STREAM_MUSIC, 35)
+        tg.startTone(ToneGenerator.TONE_PROP_BEEP, 55)
+    } catch (_: Exception) {
+        // Si el dispositivo no permite reproducir el tono, la app sigue igual.
+    }
+}
+
+fun prefsAgua(context: Context, uid: String) = context.getSharedPreferences("agua_$uid", Context.MODE_PRIVATE)
+
+fun cargarVasosConsumidosLocal(context: Context, uid: String, fecha: String = fechaHoyDispositivo()): Int {
+    return prefsAgua(context, uid).getInt("vasos_$fecha", 0)
+}
+
+fun cargarMetaVasosLocal(context: Context, uid: String, metaCalculada: Int, fecha: String = fechaHoyDispositivo()): Int {
+    return prefsAgua(context, uid).getInt("meta_$fecha", metaCalculada.coerceAtLeast(1))
+}
+
+fun guardarAguaLocal(context: Context, uid: String, vasos: Int, meta: Int, fecha: String = fechaHoyDispositivo()) {
+    prefsAgua(context, uid).edit()
+        .putInt("vasos_$fecha", vasos.coerceIn(0, 30))
+        .putInt("meta_$fecha", meta.coerceIn(1, 30))
+        .apply()
+}
+
+fun textoAguaLocal(context: Context, uid: String, metaCalculada: Int): String {
+    val fecha = fechaHoyDispositivo()
+    val vasos = cargarVasosConsumidosLocal(context, uid, fecha)
+    val meta = cargarMetaVasosLocal(context, uid, metaCalculada, fecha)
+    return "$vasos / $meta vasos"
+}
+
 fun indiceDiaSemanaActual(): Int {
     return when (Calendar.getInstance().get(Calendar.DAY_OF_WEEK)) {
         Calendar.MONDAY -> 0
@@ -238,6 +426,41 @@ fun indiceDiaSemanaActual(): Int {
 }
 
 fun nombreDiaSemanaActual(): String = listOf("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")[indiceDiaSemanaActual()]
+
+fun fechaDispositivoConOffset(offsetDias: Int): String {
+    val c = Calendar.getInstance()
+    c.add(Calendar.DAY_OF_MONTH, offsetDias)
+    return "%04d-%02d-%02d".format(c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH))
+}
+
+fun letraDiaDispositivoConOffset(offsetDias: Int): String {
+    val c = Calendar.getInstance()
+    c.add(Calendar.DAY_OF_MONTH, offsetDias)
+    return when (c.get(Calendar.DAY_OF_WEEK)) {
+        Calendar.MONDAY -> "L"
+        Calendar.TUESDAY -> "M"
+        Calendar.WEDNESDAY -> "M"
+        Calendar.THURSDAY -> "J"
+        Calendar.FRIDAY -> "V"
+        Calendar.SATURDAY -> "S"
+        else -> "D"
+    }
+}
+
+fun cargarProgresoInformeLocal(context: Context, uid: String, fecha: String): Float {
+    val cantidadMarcada = cargarCumplidasLocal(context, uid, fecha).size
+    return (cantidadMarcada.toFloat() / 4f).coerceIn(0f, 1f)
+}
+
+fun cargarProgresoSemanalLocal(context: Context, uid: String): List<Float> {
+    return (-6..0).map { offset ->
+        cargarProgresoInformeLocal(context, uid, fechaDispositivoConOffset(offset))
+    }
+}
+
+fun cargarEtiquetasSemanaDispositivo(): List<String> {
+    return (-6..0).map { offset -> letraDiaDispositivoConOffset(offset) }
+}
 
 fun fechaAyerDispositivo(): String {
     val c = Calendar.getInstance()
@@ -324,26 +547,30 @@ fun BotonVolverFlotante(onVolver: () -> Unit) {
     }
 }
 
-suspend fun leerTablaSupabase(tabla: String): JSONArray = withContext(Dispatchers.IO) {
-    val url = URL("$SUPABASE_URL/rest/v1/$tabla?select=*")
+suspend fun leerTablaSupabase(tabla: String, query: String = "select=*"): JSONArray = withContext(Dispatchers.IO) {
+    val separador = if (query.isBlank()) "select=*" else query.trim().removePrefix("?")
+    val url = URL("$SUPABASE_URL/rest/v1/$tabla?$separador")
     val connection = url.openConnection() as HttpURLConnection
 
     try {
         connection.requestMethod = "GET"
+        connection.connectTimeout = 10000
+        connection.readTimeout = 10000
         connection.setRequestProperty("apikey", SUPABASE_KEY)
         connection.setRequestProperty("Authorization", "Bearer $SUPABASE_KEY")
         connection.setRequestProperty("Accept", "application/json")
+        connection.setRequestProperty("Prefer", "count=exact")
 
         val code = connection.responseCode
         val stream = if (code in 200..299) connection.inputStream else connection.errorStream
         val body = stream.bufferedReader().use { it.readText() }
 
-        Log.d("SUPABASE_DEBUG", "Tabla: $tabla")
+        Log.d("SUPABASE_DEBUG", "URL: $url")
         Log.d("SUPABASE_DEBUG", "Código: $code")
         Log.d("SUPABASE_DEBUG", "Respuesta: $body")
 
         if (code !in 200..299) {
-            throw Exception("Supabase respondió error $code: $body")
+            throw Exception("Supabase respondió error $code en $tabla: $body")
         }
 
         JSONArray(body)
@@ -352,62 +579,296 @@ suspend fun leerTablaSupabase(tabla: String): JSONArray = withContext(Dispatcher
     }
 }
 
+suspend fun insertarSupabase(tabla: String, jsonBody: String) = withContext(Dispatchers.IO) {
+    val url = URL("$SUPABASE_URL/rest/v1/$tabla")
+    val connection = url.openConnection() as HttpURLConnection
+
+    try {
+        connection.requestMethod = "POST"
+        connection.connectTimeout = 10000
+        connection.readTimeout = 10000
+        connection.doOutput = true
+        connection.setRequestProperty("apikey", SUPABASE_KEY)
+        connection.setRequestProperty("Authorization", "Bearer $SUPABASE_KEY")
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.setRequestProperty("Accept", "application/json")
+        connection.setRequestProperty("Prefer", "count=exact")
+        connection.setRequestProperty("Prefer", "return=minimal")
+        connection.outputStream.use { it.write(jsonBody.toByteArray(Charsets.UTF_8)) }
+
+        val code = connection.responseCode
+        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+        val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+
+        Log.d("SUPABASE_DEBUG", "POST $tabla -> $code $body")
+
+        if (code !in 200..299) {
+            throw Exception("No se pudo guardar en Supabase ($tabla): $body")
+        }
+    } finally {
+        connection.disconnect()
+    }
+}
+
 fun separarRestricciones(texto: String): List<String> {
     return texto
-        .split(",", ";")
+        .split(",", ";", "|")
         .map { it.trim() }
         .filter { it.isNotBlank() }
 }
 
-suspend fun obtenerComidasDesdeSupabase(): List<ComidaPlan> {
-    val json = leerTablaSupabase("comida4")
-    val lista = mutableListOf<ComidaPlan>()
+fun normalizarListaBusqueda(texto: String): String {
+    return normalizarRestriccion(texto)
+        .replace("_", " ")
+        .replace("-", " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+}
 
-    for (i in 0 until json.length()) {
-        val obj = json.getJSONObject(i)
 
-        val nombre = obj.optString("nombre4", "")
-        val calorias = obj.optInt("calorias4", 0)
-        val tipo = obj.optString("tipo4", "")
-        val proteinas = obj.optInt("proteinas_g4", 0)
-        val carbohidratos = obj.optInt("carbohidratos_g4", 0)
-        val grasas = obj.optInt("grasas_g4", 0)
-        val restriccionesTexto = obj.optString("restricciones4", "")
-        val restricciones = separarRestricciones(restriccionesTexto)
+fun comidasFallbackOfflineKekeFit(): List<ComidaPlan> = listOf(
+    ComidaPlan(
+        id = 9001,
+        nombre = "Avena con banana",
+        calorias = 420,
+        tipo = "desayuno",
+        proteinas = 18,
+        carbohidratos = 65,
+        grasas = 10,
+        restricciones = listOf("Vegetariano"),
+        ingredientes = listOf("avena", "banana", "leche", "yogur")
+    ),
+    ComidaPlan(
+        id = 9002,
+        nombre = "Tostadas con huevo",
+        calorias = 480,
+        tipo = "desayuno",
+        proteinas = 24,
+        carbohidratos = 48,
+        grasas = 20,
+        restricciones = emptyList(),
+        ingredientes = listOf("pan", "huevo", "queso", "fruta")
+    ),
+    ComidaPlan(
+        id = 9003,
+        nombre = "Pollo con arroz y ensalada",
+        calorias = 720,
+        tipo = "almuerzo",
+        proteinas = 48,
+        carbohidratos = 82,
+        grasas = 18,
+        restricciones = emptyList(),
+        ingredientes = listOf("pollo", "arroz", "lechuga", "tomate")
+    ),
+    ComidaPlan(
+        id = 9004,
+        nombre = "Bowl de legumbres",
+        calorias = 640,
+        tipo = "almuerzo",
+        proteinas = 28,
+        carbohidratos = 92,
+        grasas = 16,
+        restricciones = listOf("Vegetariano"),
+        ingredientes = listOf("lentejas", "arroz", "verduras", "aceite de oliva")
+    ),
+    ComidaPlan(
+        id = 9005,
+        nombre = "Yogur con granola",
+        calorias = 360,
+        tipo = "merienda",
+        proteinas = 16,
+        carbohidratos = 48,
+        grasas = 11,
+        restricciones = listOf("Vegetariano"),
+        ingredientes = listOf("yogur", "granola", "fruta")
+    ),
+    ComidaPlan(
+        id = 9006,
+        nombre = "Sándwich integral de atún",
+        calorias = 430,
+        tipo = "merienda",
+        proteinas = 32,
+        carbohidratos = 44,
+        grasas = 12,
+        restricciones = emptyList(),
+        ingredientes = listOf("pan integral", "atún", "tomate", "queso")
+    ),
+    ComidaPlan(
+        id = 9007,
+        nombre = "Carne magra con puré",
+        calorias = 690,
+        tipo = "cena",
+        proteinas = 45,
+        carbohidratos = 62,
+        grasas = 24,
+        restricciones = emptyList(),
+        ingredientes = listOf("carne", "papa", "verduras")
+    ),
+    ComidaPlan(
+        id = 9008,
+        nombre = "Tortilla de verduras",
+        calorias = 520,
+        tipo = "cena",
+        proteinas = 26,
+        carbohidratos = 34,
+        grasas = 30,
+        restricciones = listOf("Vegetariano"),
+        ingredientes = listOf("huevo", "espinaca", "cebolla", "queso")
+    )
+)
 
-        if (nombre.isNotBlank()) {
-            lista.add(
-                ComidaPlan(
-                    nombre = nombre,
-                    calorias = calorias,
-                    tipo = tipo,
-                    proteinas = proteinas,
-                    carbohidratos = carbohidratos,
-                    grasas = grasas,
-                    restricciones = restricciones,
-                    ingredientes = listOf(nombre.lowercase(), tipo.lowercase(), restriccionesTexto.lowercase())
-                )
-            )
-        }
+fun condicionesFallbackOfflineKekeFit(): List<String> = listOf(
+    "Sin restricciones",
+    "Vegetariano",
+    "Sin lactosa",
+    "Sin gluten",
+    "Diabetes",
+    "Hipertensión",
+    "Alergia al maní",
+    "Alergia al huevo"
+)
+
+fun esErrorRedKekeFit(e: Exception): Boolean {
+    val texto = (e.localizedMessage ?: e.message ?: "").lowercase()
+    return e is java.net.UnknownHostException ||
+        e is java.net.SocketTimeoutException ||
+        texto.contains("unable to resolve host") ||
+        texto.contains("failed to connect") ||
+        texto.contains("timeout") ||
+        texto.contains("no address associated")
+}
+
+fun mensajeRedKekeFit(e: Exception): String {
+    return if (esErrorRedKekeFit(e)) {
+        "No hay conexión con Supabase/Internet en este momento. La app va a usar datos locales temporales."
+    } else {
+        e.localizedMessage ?: "No se pudo conectar con Supabase."
     }
+}
 
-    return lista
+suspend fun obtenerComidasDesdeSupabase(): List<ComidaPlan> {
+    return try {
+        val json = leerTablaSupabase("comida2", "select=*&order=id_comida2.asc")
+        val lista = mutableListOf<ComidaPlan>()
+
+        for (i in 0 until json.length()) {
+            val obj = json.getJSONObject(i)
+
+            val id = obj.optInt("id_comida2", 0)
+            val nombre = obj.optString("nombre2", "")
+            val calorias = obj.optInt("calorias2", 0)
+            val tipo = obj.optString("tipo2", "")
+            val proteinas = obj.optInt("proteinas_g2", 0)
+            val carbohidratos = obj.optInt("carbohidratos_g2", 0)
+            val grasas = obj.optInt("grasas_g2", 0)
+            val restriccionesTexto = obj.optString("restricciones2", "")
+            val ingredientesTexto = obj.optString("ingredientes2", "")
+            val preferenciasUsuario = obj.optString("preferencias_usuario2", "")
+            val restricciones = separarRestricciones(restriccionesTexto)
+            val ingredientes = separarRestricciones(ingredientesTexto).ifEmpty {
+                separarRestricciones(preferenciasUsuario).ifEmpty { listOf(nombre, tipo) }
+            }
+
+            if (nombre.isNotBlank()) {
+                lista.add(
+                    ComidaPlan(
+                        id = id,
+                        nombre = nombre,
+                        calorias = calorias,
+                        tipo = tipo,
+                        proteinas = proteinas,
+                        carbohidratos = carbohidratos,
+                        grasas = grasas,
+                        restricciones = restricciones,
+                        ingredientes = ingredientes
+                    )
+                )
+            }
+        }
+
+        lista.ifEmpty { comidasFallbackOfflineKekeFit() }
+    } catch (e: Exception) {
+        Log.e("SUPABASE_DEBUG", mensajeRedKekeFit(e), e)
+        comidasFallbackOfflineKekeFit()
+    }
 }
 
 suspend fun obtenerCondicionesDesdeSupabase(): List<String> {
-    val json = leerTablaSupabase("condicion4")
-    val lista = mutableListOf<String>()
+    return try {
+        val json = leerTablaSupabase("condicion2", "select=*&order=id_condicion2.asc")
+        val lista = mutableListOf<String>()
 
-    for (i in 0 until json.length()) {
-        val obj = json.getJSONObject(i)
-        val nombre = obj.optString("nombre4", "")
+        for (i in 0 until json.length()) {
+            val obj = json.getJSONObject(i)
+            val nombre = obj.optString("nombre2", "")
 
-        if (nombre.isNotBlank() && !lista.contains(nombre)) {
-            lista.add(nombre)
+            if (nombre.isNotBlank() && lista.none { normalizarListaBusqueda(it) == normalizarListaBusqueda(nombre) }) {
+                lista.add(nombre)
+            }
         }
-    }
 
-    return lista
+        lista.ifEmpty { condicionesFallbackOfflineKekeFit() }
+    } catch (e: Exception) {
+        Log.e("SUPABASE_DEBUG", mensajeRedKekeFit(e), e)
+        condicionesFallbackOfflineKekeFit()
+    }
+}
+
+suspend fun obtenerPlanDesdeSupabase(): List<PlanComidaSupabase> {
+    return try {
+        val json = leerTablaSupabase("plan2", "select=*&order=fecha2.asc,id_plan2.asc")
+        val lista = mutableListOf<PlanComidaSupabase>()
+
+        for (i in 0 until json.length()) {
+            val obj = json.getJSONObject(i)
+            lista.add(
+                PlanComidaSupabase(
+                    idPlan = obj.optInt("id_plan2", 0),
+                    idUsuario = obj.optInt("id_usuario2", 0),
+                    fecha = obj.optString("fecha2", ""),
+                    tipoComida = obj.optString("tipo_comida2", ""),
+                    idComida = obj.optInt("id_comida2", 0)
+                )
+            )
+        }
+
+        lista
+    } catch (e: Exception) {
+        Log.e("SUPABASE_DEBUG", mensajeRedKekeFit(e), e)
+        emptyList()
+    }
+}
+
+suspend fun obtenerHistorialAguaDesdeSupabase(): List<RegistroAguaDia> {
+    return try {
+        val json = leerTablaSupabase("historial_agua2", "select=*&order=fecha2.asc")
+        val lista = mutableListOf<RegistroAguaDia>()
+
+        for (i in 0 until json.length()) {
+            val obj = json.getJSONObject(i)
+            lista.add(
+                RegistroAguaDia(
+                    fecha = obj.optString("fecha2", ""),
+                    vasosConsumidos = obj.optInt("vasos_consumidos2", 0),
+                    vasosMeta = obj.optInt("vasos_meta2", 8)
+                )
+            )
+        }
+
+        lista
+    } catch (e: Exception) {
+        Log.e("SUPABASE_DEBUG", mensajeRedKekeFit(e), e)
+        emptyList()
+    }
+}
+
+suspend fun guardarAguaSupabase(idUsuario2: Int, vasosConsumidos: Int, vasosMeta: Int) {
+    try {
+        val body = """{"id_usuario2":$idUsuario2,"fecha2":"${fechaHoyDispositivo()}","vasos_consumidos2":$vasosConsumidos,"vasos_meta2":$vasosMeta}"""
+        insertarSupabase("historial_agua2", body)
+    } catch (e: Exception) {
+        Log.e("SUPABASE_DEBUG", mensajeRedKekeFit(e), e)
+    }
 }
 
 fun Context.findActivity(): Activity {
@@ -563,7 +1024,7 @@ fun AppPrincipal() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(FondoVerdeClaro),
+                    .background(fondoPantallaActual()),
                 contentAlignment = Alignment.Center
             ) {
                 IndicadorCargaVerde()
@@ -711,14 +1172,33 @@ fun PantallaAcceso(
                     if (loginTask.isSuccessful) {
                         onLoginSuccess()
                     } else {
-                        error = loginTask.exception?.localizedMessage
+                        val detalle = loginTask.exception?.localizedMessage
                             ?: "Error al iniciar sesión con Google."
+                        error = if (detalle.contains("Failed to connect", ignoreCase = true) ||
+                            detalle.contains("Unable to resolve host", ignoreCase = true)
+                        ) {
+                            "No se pudo conectar con Google. Revisá Internet/DNS del celu o probá con otra red."
+                        } else {
+                            detalle
+                        }
                     }
                 }
         } catch (e: com.google.android.gms.common.api.ApiException) {
-            error = "Google Sign-In falló. Código: ${e.statusCode}"
+            error = when (e.statusCode) {
+                7 -> "Google Sign-In no pudo conectarse a Google. Revisá Internet/DNS del celu o probá con otra red."
+                10 -> "Google Sign-In está mal configurado. Revisá el SHA-1/SHA-256 y el google-services.json de Firebase."
+                12501 -> "Inicio con Google cancelado."
+                else -> "Google Sign-In falló. Código: ${e.statusCode}"
+            }
         } catch (e: Exception) {
-            error = e.localizedMessage ?: "Error con Google Sign-In."
+            val detalle = e.localizedMessage ?: "Error con Google Sign-In."
+            error = if (detalle.contains("Failed to connect", ignoreCase = true) ||
+                detalle.contains("Unable to resolve host", ignoreCase = true)
+            ) {
+                "No se pudo conectar con Google. Revisá Internet/DNS del celu o probá con otra red."
+            } else {
+                detalle
+            }
         }
     }
 
@@ -792,7 +1272,7 @@ fun PantallaAcceso(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White)
+            colors = CardDefaults.cardColors(containerColor = tarjetaActual())
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(
@@ -962,9 +1442,7 @@ fun PantallaAcceso(
                         mensaje = ""
                         cargando = true
 
-                        googleClient.signOut().addOnCompleteListener {
-                            launcher.launch(googleClient.signInIntent)
-                        }
+                        launcher.launch(googleClient.signInIntent)
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -983,12 +1461,14 @@ fun PantallaAcceso(
                     )
                 }
 
+                Spacer(modifier = Modifier.height(14.dp))
+
                 if (mensaje.isNotBlank()) {
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
                         text = mensaje,
-                        color = VerdeOscuro,
+                        color = textoSecundarioActual(),
                         fontSize = 14.sp
                     )
                 }
@@ -1004,6 +1484,33 @@ fun PantallaAcceso(
                 }
             }
         }
+    }
+}
+
+
+fun calcularEdadDesdeFecha(fecha: String): Int? {
+    val partes = fecha.split("/")
+    if (partes.size != 3) return null
+    val dia = partes[0].toIntOrNull() ?: return null
+    val mes = partes[1].toIntOrNull() ?: return null
+    val anio = partes[2].toIntOrNull() ?: return null
+
+    val hoy = Calendar.getInstance()
+    var edad = hoy.get(Calendar.YEAR) - anio
+    val mesActual = hoy.get(Calendar.MONTH) + 1
+    val diaActual = hoy.get(Calendar.DAY_OF_MONTH)
+
+    if (mesActual < mes || (mesActual == mes && diaActual < dia)) edad--
+    return edad.coerceAtLeast(0)
+}
+
+fun mensajeWidgetRacha(estado: EstadoRacha): String {
+    return when {
+        estado.informeHoyEnviado && estado.dias >= 7 -> "Vas excelente. Ya cuidaste tu racha hoy y venís muy constante."
+        estado.informeHoyEnviado -> "Listo por hoy. Mañana volvé para mantener la racha viva."
+        estado.activa && estado.dias >= 3 -> "Buen camino. Completá el informe de hoy antes de dormir."
+        estado.activa -> "Tu racha sigue viva. Hacé el informe para no perderla."
+        else -> "Hoy podés empezar una nueva racha. Completá tu primer informe."
     }
 }
 
@@ -1031,6 +1538,8 @@ fun PantallaFormularioPerfil(
     var restriccionesSeleccionadas by remember { mutableStateOf(perfilInicial.restricciones) }
     var error by remember { mutableStateOf("") }
     var mostrarFechaPicker by remember { mutableStateOf(false) }
+    var mostrarAvisoMenor by remember { mutableStateOf(false) }
+    var perfilPendienteMenor by remember { mutableStateOf<UsuarioPerfil?>(null) }
 
     var restriccionesDisponibles by remember { mutableStateOf<List<String>>(emptyList()) }
     var cargandoRestricciones by remember { mutableStateOf(true) }
@@ -1042,8 +1551,7 @@ fun PantallaFormularioPerfil(
             errorRestricciones = ""
         } catch (e: Exception) {
             restriccionesDisponibles = emptyList()
-            errorRestricciones = e.localizedMessage
-                ?: "No se pudieron cargar las condiciones desde Supabase."
+            errorRestricciones = mensajeRedKekeFit(e)
         } finally {
             cargandoRestricciones = false
         }
@@ -1058,6 +1566,10 @@ fun PantallaFormularioPerfil(
             context,
             { _, year, month, dayOfMonth ->
                 fechaNacimiento = "%02d/%02d/%04d".format(dayOfMonth, month + 1, year)
+                calcularEdadDesdeFecha(fechaNacimiento)?.let { edadCalculada ->
+                    edad = edadCalculada.toString()
+                    if (edadCalculada < 16) mostrarAvisoMenor = true
+                }
                 mostrarFechaPicker = false
             },
             calendario.get(Calendar.YEAR),
@@ -1069,7 +1581,7 @@ fun PantallaFormularioPerfil(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(FondoVerdeClaro)
+            .background(fondoPantallaActual())
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
@@ -1077,14 +1589,14 @@ fun PantallaFormularioPerfil(
             text = titulo,
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
-            color = VerdeMuyOscuro
+            color = textoPrincipalActual()
         )
 
         Spacer(modifier = Modifier.height(6.dp))
 
         Text(
             text = subtitulo,
-            color = VerdeOscuro
+            color = textoSecundarioActual()
         )
 
         Spacer(modifier = Modifier.height(18.dp))
@@ -1146,6 +1658,15 @@ fun PantallaFormularioPerfil(
                     colors = ButtonDefaults.buttonColors(containerColor = VerdePrincipal)
                 ) {
                     Text(if (fechaNacimiento.isBlank()) "Seleccionar fecha" else "Cambiar fecha")
+                }
+
+                calcularEdadDesdeFecha(fechaNacimiento)?.let { edadCalculada ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Según la fecha de nacimiento tenés $edadCalculada años.",
+                        color = if (edadCalculada < 16) Color(0xFFB45309) else VerdeOscuro,
+                        fontSize = 13.sp
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -1335,7 +1856,8 @@ fun PantallaFormularioPerfil(
 
         Button(
             onClick = {
-                val edadInt = edad.toIntOrNull()
+                val edadDesdeFecha = calcularEdadDesdeFecha(fechaNacimiento)
+                val edadInt = edadDesdeFecha ?: edad.toIntOrNull()
                 val alturaInt = altura.toIntOrNull()
                 val pesoDouble = peso.toDoubleOrNull()
 
@@ -1343,33 +1865,38 @@ fun PantallaFormularioPerfil(
                     nombre.isBlank() || apellido.isBlank() || fechaNacimiento.isBlank() ->
                         "Completá nombre, apellido y fecha de nacimiento."
 
-                    edadInt == null || edadInt !in 14..90 ->
-                        "La edad debe estar entre 14 y 90 años."
+                    edadInt == null || edadInt !in 10..90 ->
+                        "Revisá la fecha de nacimiento o la edad."
 
-                    alturaInt == null || alturaInt !in 130..230 ->
-                        "La altura debe estar entre 130 y 230 cm."
+                    alturaInt == null || alturaInt !in 120..230 ->
+                        "La altura debe estar entre 120 y 230 cm."
 
-                    pesoDouble == null || pesoDouble < 40 || pesoDouble > 250 ->
-                        "El peso debe estar entre 40 y 250 kg."
+                    pesoDouble == null || pesoDouble < 30 || pesoDouble > 250 ->
+                        "El peso debe estar entre 30 y 250 kg."
 
                     else -> ""
                 }
 
                 if (error.isBlank()) {
-                    onContinuar(
-                        UsuarioPerfil(
-                            nombre = nombre,
-                            apellido = apellido,
-                            fechaNacimiento = fechaNacimiento,
-                            edad = edadInt ?: 18,
-                            alturaCm = alturaInt ?: 170,
-                            pesoKg = pesoDouble ?: 70.0,
-                            genero = genero,
-                            restricciones = restriccionesSeleccionadas,
-                            meta = meta,
-                            actividad = actividad
-                        )
+                    val perfilFinal = UsuarioPerfil(
+                        nombre = nombre,
+                        apellido = apellido,
+                        fechaNacimiento = fechaNacimiento,
+                        edad = edadInt ?: 18,
+                        alturaCm = alturaInt ?: 170,
+                        pesoKg = pesoDouble ?: 70.0,
+                        genero = genero,
+                        restricciones = restriccionesSeleccionadas,
+                        meta = meta,
+                        actividad = actividad
                     )
+
+                    if ((edadInt ?: 18) < 16) {
+                        perfilPendienteMenor = perfilFinal
+                        mostrarAvisoMenor = true
+                    } else {
+                        onContinuar(perfilFinal)
+                    }
                 }
             },
             modifier = Modifier
@@ -1503,16 +2030,36 @@ fun PantallaHomeProfesional(
     onIrChat: () -> Unit,
     onCerrarSesion: () -> Unit
 ) {
+    val context = LocalContext.current
+    val uid = FirebaseAuth.getInstance().currentUser?.uid ?: "local"
     val resultado = calcularPlanNutricional(usuario)
-    val diasRacha = 7
-    val progresoInforme = 0.42f
-    val rachaActiva = true
+
+    var estadoRacha by remember { mutableStateOf(cargarEstadoRacha(context, uid)) }
+    var progresoSemanal by remember { mutableStateOf(cargarProgresoSemanalLocal(context, uid)) }
+    val etiquetasSemana = remember { cargarEtiquetasSemanaDispositivo() }
+    val progresoInforme = progresoSemanal.lastOrNull() ?: 0f
+    val rachaActiva = estadoRacha.activa
+
+    var aguaTextoHome by remember { mutableStateOf(textoAguaLocal(context, uid, resultado.vasosMeta)) }
+    var mostrarDialogWidget by remember { mutableStateOf(false) }
 
     var mensaje by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     var datosVisibles by remember { mutableStateOf(true) }
     var menuExpandido by remember { mutableStateOf(false) }
     var mostrarDialogRacha by remember { mutableStateOf(false) }
+    var modoOscuro by remember { mutableStateOf(cargarModoOscuro(context)) }
+
+    val fondoPantalla = if (modoOscuro) Color(0xFF071827) else FondoVerdeClaro
+    val textoPrincipal = if (modoOscuro) Color.White else VerdeMuyOscuro
+    val tarjeta = if (modoOscuro) Color(0xFF0F2A3D) else Color.White
+    val tarjetaSuave = if (modoOscuro) Color(0xFF102F46) else Color(0xFFFFF7ED)
+    val textoSuave = if (modoOscuro) Color(0xFFBAE6FD) else VerdeOscuro
+
+    LaunchedEffect(Unit) {
+        modoOscuro = cargarModoOscuro(context)
+        KekeFitVisualState.modoOscuro = modoOscuro
+    }
 
     LaunchedEffect(bienvenidaPendiente) {
         if (bienvenidaPendiente) {
@@ -1520,10 +2067,19 @@ fun PantallaHomeProfesional(
         }
     }
 
+    LaunchedEffect(uid, usuario.nombre, resultado.calorias) {
+        val rachaActual = cargarEstadoRacha(context, uid)
+        estadoRacha = rachaActual
+        progresoSemanal = cargarProgresoSemanalLocal(context, uid)
+        aguaTextoHome = textoAguaLocal(context, uid, resultado.vasosMeta)
+        guardarUidWidget(context, uid, usuario, resultado, rachaActual)
+        actualizarWidgetsKekeFit(context)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(FondoVerdeClaro)
+            .background(fondoPantalla)
             .verticalScroll(rememberScrollState())
     ) {
         Box(
@@ -1531,7 +2087,8 @@ fun PantallaHomeProfesional(
                 .fillMaxWidth()
                 .background(
                     Brush.verticalGradient(
-                        listOf(VerdeMuyOscuro, VerdeOscuro, VerdePrincipal)
+                        if (modoOscuro) listOf(Color(0xFF020617), VerdeMuyOscuro, VerdeOscuro)
+                        else listOf(VerdeMuyOscuro, VerdeOscuro, VerdePrincipal)
                     )
                 )
                 .padding(start = 18.dp, end = 18.dp, top = 42.dp, bottom = 18.dp)
@@ -1556,7 +2113,6 @@ fun PantallaHomeProfesional(
                             )
 
                             Spacer(modifier = Modifier.width(10.dp))
-
                             AvatarUsuario(userPhotoUrl = userPhotoUrl)
                         }
 
@@ -1572,14 +2128,14 @@ fun PantallaHomeProfesional(
                             Surface(
                                 modifier = Modifier
                                     .size(42.dp)
-                                    .clickable { mostrarDialogRacha = true },
+                                    .clickable { reproducirClickSuave(context); mostrarDialogRacha = true },
                                 shape = CircleShape,
                                 color = Color.White.copy(alpha = 0.16f)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = if (rachaActiva) "🔥" else "🩶",
-                                        fontSize = 20.sp
+                                    IconoFuegoRachaAnimado(
+                                        activa = rachaActiva,
+                                        sizeSp = 22
                                     )
                                 }
                             }
@@ -1589,7 +2145,7 @@ fun PantallaHomeProfesional(
                             Surface(
                                 modifier = Modifier
                                     .size(42.dp)
-                                    .clickable { menuExpandido = true },
+                                    .clickable { reproducirClickSuave(context); menuExpandido = true },
                                 shape = CircleShape,
                                 color = Color.White.copy(alpha = 0.16f)
                             ) {
@@ -1606,48 +2162,81 @@ fun PantallaHomeProfesional(
 
                         DropdownMenu(
                             expanded = menuExpandido,
-                            onDismissRequest = { menuExpandido = false }
+                            onDismissRequest = { menuExpandido = false },
+                            containerColor = if (modoOscuro) Color(0xEE0F172A) else Color.White.copy(alpha = 0.94f),
+                            tonalElevation = 10.dp,
+                            shadowElevation = 10.dp
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Datos") },
+                                text = { Text("Datos", color = textoPrincipal) },
                                 onClick = {
+                                    reproducirClickSuave(context)
                                     datosVisibles = true
                                     menuExpandido = false
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Racha") },
+                                text = { Text("Racha", color = textoPrincipal) },
                                 onClick = {
+                                    reproducirClickSuave(context)
+                                    estadoRacha = cargarEstadoRacha(context, uid)
+                                    progresoSemanal = cargarProgresoSemanalLocal(context, uid)
                                     mostrarDialogRacha = true
                                     menuExpandido = false
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Informe diario") },
+                                text = { Text("Informe diario", color = textoPrincipal) },
                                 onClick = {
+                                    reproducirClickSuave(context)
                                     menuExpandido = false
                                     onIrInforme()
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Sesión") },
+                                text = { Text(if (modoOscuro) "Modo claro" else "Modo oscuro", color = textoPrincipal) },
                                 onClick = {
+                                    reproducirClickSuave(context)
+                                    modoOscuro = !modoOscuro
+                                    guardarModoOscuro(context, modoOscuro)
                                     menuExpandido = false
-                                    onCerrarSesion()
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Chatbot") },
+                                text = { Text("Widget para celu", color = textoPrincipal) },
                                 onClick = {
+                                    reproducirClickSuave(context)
+                                    guardarUidWidget(context, uid, usuario, resultado, estadoRacha)
+                                    actualizarWidgetsKekeFit(context)
+                                    pedirAgregarWidgetKekeFit(context)
+                                    mostrarDialogWidget = true
+                                    menuExpandido = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Chatbot", color = textoPrincipal) },
+                                onClick = {
+                                    reproducirClickSuave(context)
                                     menuExpandido = false
                                     onIrChat()
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Feedback") },
+                                text = { Text("Feedback", color = textoPrincipal) },
                                 onClick = {
+                                    reproducirClickSuave(context)
                                     menuExpandido = false
                                     onIrAyuda()
+                                }
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null, tint = Color(0xFFEF4444)) },
+                                text = { Text("Cerrar sesión", color = Color(0xFFEF4444), fontWeight = FontWeight.SemiBold) },
+                                onClick = {
+                                    reproducirClickSuave(context)
+                                    menuExpandido = false
+                                    onCerrarSesion()
                                 }
                             )
                         }
@@ -1657,9 +2246,11 @@ fun PantallaHomeProfesional(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 TarjetaRachaHero(
-                    diasRacha = diasRacha,
+                    diasRacha = estadoRacha.dias,
                     progresoInforme = progresoInforme,
                     rachaActiva = rachaActiva,
+                    progresoSemanal = progresoSemanal,
+                    etiquetasSemana = etiquetasSemana,
                     onVerDetalle = { mostrarDialogRacha = true }
                 )
 
@@ -1677,7 +2268,7 @@ fun PantallaHomeProfesional(
                         fontSize = 16.sp
                     )
 
-                    TextButton(onClick = { datosVisibles = !datosVisibles }) {
+                    TextButton(onClick = { reproducirClickSuave(context); datosVisibles = !datosVisibles }) {
                         Text(
                             text = if (datosVisibles) "Ocultar" else "Mostrar",
                             color = Color.White
@@ -1712,7 +2303,7 @@ fun PantallaHomeProfesional(
                             MiniDatoCompacto(
                                 modifier = Modifier.weight(1f),
                                 titulo = "Agua",
-                                valor = resultado.aguaTexto,
+                                valor = aguaTextoHome,
                                 icono = Icons.Default.Favorite
                             )
                         }
@@ -1726,7 +2317,7 @@ fun PantallaHomeProfesional(
                 text = "Resumen de hoy",
                 fontWeight = FontWeight.Bold,
                 fontSize = 22.sp,
-                color = VerdeMuyOscuro
+                color = textoPrincipal
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -1760,12 +2351,12 @@ fun PantallaHomeProfesional(
 
             Card(
                 shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)),
+                colors = CardDefaults.cardColors(containerColor = tarjetaSuave),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
                     text = "Aviso médico: Keke Fit es una herramienta de apoyo. Ante dudas de salud, consultá con un nutricionista o profesional médico.",
-                    color = Color(0xFF9A3412),
+                    color = if (modoOscuro) Color(0xFFFFD7BA) else Color(0xFF9A3412),
                     fontSize = 13.sp,
                     modifier = Modifier.padding(14.dp)
                 )
@@ -1777,7 +2368,7 @@ fun PantallaHomeProfesional(
                 text = "Accesos rápidos",
                 fontWeight = FontWeight.Bold,
                 fontSize = 20.sp,
-                color = VerdeMuyOscuro
+                color = textoPrincipal
             )
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -1868,9 +2459,11 @@ fun PantallaHomeProfesional(
                 Text("Restablecer contraseña")
             }
 
+            Spacer(modifier = Modifier.height(14.dp))
+
             if (mensaje.isNotBlank()) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Text(text = mensaje, color = VerdeOscuro)
+                Text(text = mensaje, color = textoSuave)
             }
 
             if (error.isNotBlank()) {
@@ -1881,18 +2474,35 @@ fun PantallaHomeProfesional(
             Spacer(modifier = Modifier.height(18.dp))
 
             GraficoSeguimientoSemanal(
-                progresoHoy = progresoInforme,
-                recomendacion = resultado.recomendacion
+                valores = progresoSemanal,
+                etiquetas = etiquetasSemana,
+                recomendacion = resultado.recomendacion,
+                modoOscuro = modoOscuro
             )
 
             Spacer(modifier = Modifier.height(22.dp))
         }
     }
 
+    if (mostrarDialogWidget) {
+        DialogoWidgetRacha(
+            estadoRacha = estadoRacha,
+            modoOscuro = modoOscuro,
+            onAgregarWidget = {
+                guardarUidWidget(context, uid, usuario, resultado, estadoRacha)
+                actualizarWidgetsKekeFit(context)
+                pedirAgregarWidgetKekeFit(context)
+            },
+            onDismiss = { mostrarDialogWidget = false }
+        )
+    }
+
     if (mostrarDialogRacha) {
         DialogoRachaCalendario(
-            diasRacha = diasRacha,
+            diasRacha = estadoRacha.dias,
             rachaActiva = rachaActiva,
+            progresoSemanal = progresoSemanal,
+            etiquetasSemana = etiquetasSemana,
             onDismiss = { mostrarDialogRacha = false }
         )
     }
@@ -1903,6 +2513,8 @@ fun TarjetaRachaHero(
     diasRacha: Int,
     progresoInforme: Float,
     rachaActiva: Boolean,
+    progresoSemanal: List<Float>,
+    etiquetasSemana: List<String>,
     onVerDetalle: () -> Unit
 ) {
     val porcentaje = (progresoInforme.coerceIn(0f, 1f) * 100).roundToInt()
@@ -1921,9 +2533,9 @@ fun TarjetaRachaHero(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = if (rachaActiva) "🔥" else "🩶",
-                        fontSize = 28.sp
+                    IconoFuegoRachaAnimado(
+                        activa = rachaActiva,
+                        sizeSp = 30
                     )
 
                     Spacer(modifier = Modifier.width(10.dp))
@@ -1935,7 +2547,7 @@ fun TarjetaRachaHero(
                             fontSize = 13.sp
                         )
                         Text(
-                            text = "$diasRacha días seguidos",
+                            text = if (diasRacha == 1) "1 día seguido" else "$diasRacha días seguidos",
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 22.sp
@@ -1964,7 +2576,7 @@ fun TarjetaRachaHero(
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = "Seguimiento del informe mensual",
+                text = "Últimos 7 días del informe",
                 color = VerdeTextoSuave,
                 fontSize = 13.sp
             )
@@ -1975,21 +2587,41 @@ fun TarjetaRachaHero(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                listOf("L", "M", "M", "J", "V", "S", "D").forEachIndexed { index, letra ->
-                    val activa = index < diasRacha.coerceAtMost(7)
+                val valores = if (progresoSemanal.size == 7) progresoSemanal else List(7) { 0f }
+                val etiquetas = if (etiquetasSemana.size == 7) etiquetasSemana else listOf("L", "M", "M", "J", "V", "S", "D")
+
+                valores.forEachIndexed { index, progreso ->
+                    val completo = progreso >= 1f
+                    val esHoy = index == 6
                     Surface(
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp),
+                            .height(46.dp),
                         shape = RoundedCornerShape(16.dp),
-                        color = if (activa) VerdeSecundario.copy(alpha = 0.38f) else Color.White.copy(alpha = 0.10f)
+                        color = when {
+                            completo -> VerdeSecundario.copy(alpha = 0.42f)
+                            progreso > 0f -> Color.White.copy(alpha = 0.24f)
+                            else -> Color.White.copy(alpha = 0.10f)
+                        },
+                        border = if (esHoy) androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.55f)) else null
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
                             Text(
-                                text = if (activa) "🔥" else letra,
+                                text = if (completo) "🔥" else etiquetas[index],
                                 color = Color.White,
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp
                             )
+                            if (progreso > 0f && !completo) {
+                                Text(
+                                    text = "${(progreso * 100).roundToInt()}%",
+                                    color = VerdeTextoSuave,
+                                    fontSize = 9.sp
+                                )
+                            }
                         }
                     }
                 }
@@ -2045,7 +2677,7 @@ fun TarjetaMetricaCompacta(
     Card(
         shape = RoundedCornerShape(22.dp),
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        colors = CardDefaults.cardColors(containerColor = tarjetaActual())
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -2076,13 +2708,13 @@ fun TarjetaMetricaCompacta(
             Text(
                 text = valor,
                 fontWeight = FontWeight.Bold,
-                color = VerdeMuyOscuro,
+                color = textoPrincipalActual(),
                 fontSize = 16.sp
             )
             if (subtitulo.isNotBlank()) {
                 Text(
                     text = subtitulo,
-                    color = VerdeOscuro,
+                    color = textoSecundarioActual(),
                     fontSize = 11.sp
                 )
             }
@@ -2136,32 +2768,79 @@ fun BotonHomeAccion(
     }
 }
 
+
+@Composable
+fun TarjetaWidgetRacha(
+    estadoRacha: EstadoRacha,
+    modoOscuro: Boolean,
+    onClick: () -> Unit
+) {
+    val fondo = if (modoOscuro) Color(0xFF020617) else VerdeMuyOscuro
+    val borde = if (estadoRacha.activa) VerdePrincipal else Color(0xFF64748B)
+    Card(
+        shape = RoundedCornerShape(26.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = fondo),
+        border = androidx.compose.foundation.BorderStroke(1.dp, borde.copy(alpha = 0.65f))
+    ) {
+        Row(
+            modifier = Modifier.padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Surface(shape = CircleShape, color = Color.White.copy(alpha = 0.12f), modifier = Modifier.size(58.dp)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(if (estadoRacha.activa) "🔥" else "🌙", fontSize = 30.sp)
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Widget de racha", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text(
+                    text = if (estadoRacha.dias == 1) "1 día de racha" else "${estadoRacha.dias} días de racha",
+                    color = VerdeSecundario,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(mensajeWidgetRacha(estadoRacha), color = VerdeTextoSuave, fontSize = 12.sp)
+            }
+        }
+    }
+}
+
 @Composable
 fun GraficoSeguimientoSemanal(
-    progresoHoy: Float,
-    recomendacion: String
+    valores: List<Float>,
+    etiquetas: List<String>,
+    recomendacion: String,
+    modoOscuro: Boolean
 ) {
-    val valores = listOf(0.62f, 0.74f, 0.58f, 0.81f, 0.69f, progresoHoy.coerceIn(0.25f, 1f), 0.88f)
-    val etiquetas = listOf("L", "M", "M", "J", "V", "S", "D")
+    val valoresSeguros = if (valores.size == 7) valores else List(7) { 0f }
+    val etiquetasSeguras = if (etiquetas.size == 7) etiquetas else listOf("L", "M", "M", "J", "V", "S", "D")
+    val tarjeta = if (modoOscuro) Color(0xFF0F2A3D) else Color.White
+    val textoPrincipal = if (modoOscuro) Color.White else VerdeMuyOscuro
+    val textoSecundario = if (modoOscuro) Color(0xFFBAE6FD) else VerdeOscuro
+    val fondoNota = if (modoOscuro) Color(0xFF12364F) else FondoVerdeClaro
 
     Card(
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        colors = CardDefaults.cardColors(containerColor = tarjeta)
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Text(
                 text = "Gráfico de seguimiento",
                 fontWeight = FontWeight.Bold,
                 fontSize = 20.sp,
-                color = VerdeMuyOscuro
+                color = textoPrincipal
             )
 
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "Visualizá tu constancia semanal y tu progreso general.",
-                color = VerdeOscuro,
+                text = "Muestra cuánto completaste del informe en los últimos 7 días.",
+                color = textoSecundario,
                 fontSize = 13.sp
             )
 
@@ -2174,16 +2853,26 @@ fun GraficoSeguimientoSemanal(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.Bottom
             ) {
-                valores.forEachIndexed { index, valor ->
+                valoresSeguros.forEachIndexed { index, valorOriginal ->
+                    val valor = valorOriginal.coerceIn(0f, 1f)
                     Column(
                         modifier = Modifier.weight(1f),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Bottom
                     ) {
+                        Text(
+                            text = "${(valor * 100).roundToInt()}%",
+                            color = textoSecundario,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+
+                        Spacer(modifier = Modifier.height(5.dp))
+
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(((110f * valor).coerceAtLeast(18f)).dp)
+                                .height(((110f * valor).coerceAtLeast(10f)).dp)
                                 .background(
                                     brush = Brush.verticalGradient(
                                         listOf(VerdePrincipal, VerdeSecundario)
@@ -2195,8 +2884,8 @@ fun GraficoSeguimientoSemanal(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = etiquetas[index],
-                            color = VerdeOscuro,
+                            text = etiquetasSeguras[index],
+                            color = textoSecundario,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 12.sp
                         )
@@ -2208,12 +2897,12 @@ fun GraficoSeguimientoSemanal(
 
             Surface(
                 shape = RoundedCornerShape(18.dp),
-                color = FondoVerdeClaro,
+                color = fondoNota,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
                     text = recomendacion,
-                    color = VerdeOscuro,
+                    color = textoSecundario,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(12.dp)
                 )
@@ -2223,20 +2912,89 @@ fun GraficoSeguimientoSemanal(
 }
 
 @Composable
+fun DialogoWidgetRacha(
+    estadoRacha: EstadoRacha,
+    modoOscuro: Boolean,
+    onAgregarWidget: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = if (modoOscuro) Color(0xFF020617) else Color.White),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(
+                    text = "Widget de racha",
+                    color = if (modoOscuro) Color.White else VerdeMuyOscuro,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 22.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Ya agregué el widget real de Android. Tocá el botón de abajo para pedirle al celu que lo fije en la pantalla de inicio. Si tu launcher no lo permite, mantené apretada la pantalla de inicio > Widgets > Keke Fit.",
+                    color = if (modoOscuro) VerdeTextoSuave else VerdeOscuro,
+                    fontSize = 13.sp
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                TarjetaWidgetRacha(estadoRacha = estadoRacha, modoOscuro = true, onClick = {})
+                Spacer(modifier = Modifier.height(12.dp))
+                val frase = when {
+                    estadoRacha.informeHoyEnviado -> "Hoy ya sumaste. Mañana volvé para mantener la cadena."
+                    estadoRacha.activa -> "Vas bien, pero todavía falta el informe de hoy."
+                    else -> "La racha está apagada. Completá el informe para volver a empezar."
+                }
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = if (modoOscuro) Color(0xFF0F2A3D) else FondoVerdeClaro),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = frase,
+                        color = if (modoOscuro) Color.White else VerdeMuyOscuro,
+                        modifier = Modifier.padding(14.dp),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Spacer(modifier = Modifier.height(14.dp))
+                Button(
+                    onClick = onAgregarWidget,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF111827)),
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Agregar widget al inicio", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = VerdePrincipal),
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Text("Entendido")
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun DialogoRachaCalendario(
     diasRacha: Int,
     rachaActiva: Boolean,
+    progresoSemanal: List<Float>,
+    etiquetasSemana: List<String>,
     onDismiss: () -> Unit
 ) {
-    val totalDias = 30
-    val diasActivos = (1..totalDias).map { dia ->
-        dia > totalDias - diasRacha
-    }
+    val valores = if (progresoSemanal.size == 7) progresoSemanal else List(7) { 0f }
+    val etiquetas = if (etiquetasSemana.size == 7) etiquetasSemana else listOf("L", "M", "M", "J", "V", "S", "D")
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White)
+            colors = CardDefaults.cardColors(containerColor = tarjetaActual())
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Row(
@@ -2244,90 +3002,77 @@ fun DialogoRachaCalendario(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Racha y calendario",
+                            text = "Racha y progreso",
                             fontWeight = FontWeight.Bold,
                             fontSize = 22.sp,
-                            color = VerdeMuyOscuro
+                            color = textoPrincipalActual()
                         )
                         Text(
-                            text = if (rachaActiva) "$diasRacha días seguidos activos" else "La racha se reinició",
-                            color = VerdeOscuro,
+                            text = if (rachaActiva) {
+                                if (diasRacha == 1) "1 día seguido activo" else "$diasRacha días seguidos activos"
+                            } else {
+                                "Todavía no hay racha activa"
+                            },
+                            color = textoSecundarioActual(),
                             fontSize = 13.sp
                         )
                     }
 
-                    Text(
-                        text = if (rachaActiva) "🔥" else "🩶",
-                        fontSize = 28.sp
+                    IconoFuegoRachaAnimado(
+                        activa = rachaActiva,
+                        sizeSp = 30
                     )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                listOf("L", "M", "M", "J", "V", "S", "D").forEach {
-                    // solo encabezado visual simple; se muestra abajo junto con la grilla.
-                }
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    listOf("L", "M", "M", "J", "V", "S", "D").forEach { dia ->
-                        Text(
-                            text = dia,
-                            color = Color.Gray,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 12.sp,
-                            modifier = Modifier.weight(1f),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                (1..totalDias).chunked(7).forEachIndexed { filaIndex, semana ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        semana.forEach { dia ->
-                            val activo = diasActivos[dia - 1]
-                            Surface(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(40.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                color = if (activo) VerdeSecundario.copy(alpha = 0.28f) else Color(0xFFF1F5F9)
+                    valores.forEachIndexed { index, progreso ->
+                        val completo = progreso >= 1f
+                        val parcial = progreso > 0f && !completo
+                        val esHoy = index == 6
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(58.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = when {
+                                completo -> VerdeSecundario.copy(alpha = 0.35f)
+                                parcial -> Color(0xFFE0F2FE)
+                                else -> Color(0xFFF1F5F9)
+                            },
+                            border = if (esHoy) androidx.compose.foundation.BorderStroke(1.dp, VerdePrincipal) else null
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = if (activo) "🔥" else dia.toString(),
-                                        color = if (activo) VerdeOscuro else Color.Gray,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 12.sp
-                                    )
-                                }
+                                Text(
+                                    text = if (completo) "🔥" else etiquetas[index],
+                                    color = if (completo || parcial) VerdeOscuro else Color.Gray,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                                Text(
+                                    text = if (esHoy) "Hoy" else "${(progreso * 100).roundToInt()}%",
+                                    color = Color.Gray,
+                                    fontSize = 10.sp
+                                )
                             }
                         }
-
-                        repeat(7 - semana.size) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
-                    }
-
-                    if (filaIndex < 4) {
-                        Spacer(modifier = Modifier.height(6.dp))
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    text = "Si rompés la racha, el fueguito se mostrará en gris hasta volver a activarla.",
-                    color = VerdeOscuro,
+                    text = "La racha sube solo cuando enviás el informe completo del día. Si pasa la medianoche y no lo enviaste, se corta automáticamente al volver a abrir la app.",
+                    color = textoSecundarioActual(),
                     fontSize = 13.sp
                 )
 
@@ -2403,6 +3148,7 @@ fun calcularPlanNutricional(usuario: UsuarioPerfil): ResultadoNutricional {
     return ResultadoNutricional(
         calorias = calorias.roundToInt(),
         aguaTexto = "${(aguaLitros / 0.25).roundToInt()} vasos",
+        vasosMeta = (aguaLitros / 0.25).roundToInt().coerceAtLeast(4),
         imc = "%.1f".format(imcValor),
         estadoImc = estadoImc,
         proteinas = proteinas,
@@ -2411,12 +3157,16 @@ fun calcularPlanNutricional(usuario: UsuarioPerfil): ResultadoNutricional {
 }
 
 fun normalizarRestriccion(texto: String): String {
-    return texto.lowercase()
+    return texto.lowercase(Locale.ROOT)
         .replace("á", "a")
         .replace("é", "e")
         .replace("í", "i")
         .replace("ó", "o")
         .replace("ú", "u")
+        .replace("ñ", "n")
+        .replace("_", " ")
+        .replace("-", " ")
+        .replace(Regex("\\s+"), " ")
         .trim()
 }
 
@@ -2457,14 +3207,110 @@ fun horarioRecomendadoPorTipo(tipo: String): String {
     }
 }
 
+fun generarPromptAgenteRotacionKekeFit(
+    usuario: UsuarioPerfil,
+    resultado: ResultadoNutricional,
+    comidas: List<ComidaPlan>
+): String {
+    val restricciones = usuario.restricciones.joinToString(", ").ifBlank { "sin restricciones declaradas" }
+    val comidasResumen = comidas.joinToString(" | ") { comida ->
+        "${comida.id}:${comida.tipo}:${comida.nombre}:${comida.calorias}kcal:P${comida.proteinas}:C${comida.carbohidratos}:G${comida.grasas}"
+    }
+
+    return """
+        Actuá como agente nutricional de KekeFit.
+        Tenés acceso a la base de comidas ya leída por la app.
+        Usuario: edad=${usuario.edad}, altura=${usuario.alturaCm}cm, peso=${usuario.pesoKg}kg, género=${usuario.genero}, meta=${usuario.meta}, actividad=${usuario.actividad}.
+        Restricciones/alergias: $restricciones.
+        Objetivo diario: ${resultado.calorias} kcal, proteínas: ${resultado.proteinas} g.
+        Generá una rotación semanal de desayuno, almuerzo, merienda y cena evitando repetir demasiado, respetando restricciones, calorías y balance de macros.
+        Comidas disponibles: $comidasResumen
+    """.trimIndent()
+}
+
+fun generarPlanSemanalInteligenteKekeFit(
+    usuario: UsuarioPerfil,
+    resultado: ResultadoNutricional,
+    comidas: List<ComidaPlan>
+): Map<Pair<Int, String>, ComidaPlan> {
+    if (comidas.isEmpty()) return emptyMap()
+
+    val promptAgente = generarPromptAgenteRotacionKekeFit(usuario, resultado, comidas)
+    Log.d("KEKE_AGENT_ROTACION", promptAgente.take(3000))
+
+    val restricciones = usuario.restricciones.map { normalizarRestriccion(it) }.filter { it.isNotBlank() }
+    val tipos = listOf("desayuno", "almuerzo", "merienda", "cena")
+    val objetivoPorTipo = mapOf(
+        "desayuno" to (resultado.calorias * 0.22),
+        "almuerzo" to (resultado.calorias * 0.34),
+        "merienda" to (resultado.calorias * 0.16),
+        "cena" to (resultado.calorias * 0.28)
+    )
+
+    fun comidaEsCompatible(comida: ComidaPlan): Boolean {
+        val texto = (comida.restricciones + comida.ingredientes + listOf(comida.nombre, comida.tipo))
+            .joinToString(" ") { normalizarRestriccion(it) }
+
+        // Si la comida declara "sin X" o "apto X", se considera compatible.
+        // Solo se evita cuando queda claro que contiene algo prohibido.
+        return restricciones.all { restriccion ->
+            val declaradaApta = texto.contains("sin $restriccion") || texto.contains("apto $restriccion")
+            val declaradaProhibida = texto.contains("contiene $restriccion") || texto.contains("con $restriccion")
+            declaradaApta || !declaradaProhibida
+        }
+    }
+
+    fun puntuar(tipo: String, comida: ComidaPlan, dia: Int, usadasTipo: Set<String>): Double {
+        val objetivo = objetivoPorTipo[tipo] ?: (resultado.calorias / 4.0)
+        val distanciaCalorias = kotlin.math.abs(comida.calorias - objetivo) / objetivo.coerceAtLeast(1.0)
+        val bonusProteina = comida.proteinas / resultado.proteinas.coerceAtLeast(1).toDouble()
+        val penalizacionRepeticion = if (comida.nombre in usadasTipo) 0.45 else 0.0
+        val variacionDia = ((comida.id + dia * 17 + tipo.length * 5) % 11) / 100.0
+        return 1.0 - distanciaCalorias + bonusProteina - penalizacionRepeticion + variacionDia
+    }
+
+    val resultadoPlan = linkedMapOf<Pair<Int, String>, ComidaPlan>()
+    val usadasPorTipo = tipos.associateWith { mutableSetOf<String>() }
+
+    for (dia in 0..6) {
+        for (tipo in tipos) {
+            val candidatasBase = comidas.filter { normalizarRestriccion(it.tipo) == tipo }
+            val candidatasCompatibles = candidatasBase.filter { comidaEsCompatible(it) }
+            val candidatas = candidatasCompatibles.ifEmpty { candidatasBase }.ifEmpty { comidas }
+            val usadas = usadasPorTipo[tipo].orEmpty()
+            val elegida = candidatas.maxByOrNull { comida -> puntuar(tipo, comida, dia, usadas) }
+            if (elegida != null) {
+                resultadoPlan[dia to tipo] = elegida
+                usadasPorTipo[tipo]?.add(elegida.nombre)
+                if ((usadasPorTipo[tipo]?.size ?: 0) >= candidatas.size.coerceAtLeast(1)) {
+                    usadasPorTipo[tipo]?.clear()
+                }
+            }
+        }
+    }
+
+    return resultadoPlan
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TarjetaComidaDelDia(
     tipo: String,
     comida: ComidaPlan?
 ) {
-    val colorFondo = colorPorTipoComida(tipo)
-    val colorTexto = colorTextoPorTipoComida(tipo)
+    val modoOscuro = modoOscuroActual()
+    val colorFondo = if (modoOscuro) {
+        when (normalizarRestriccion(tipo)) {
+            "desayuno" -> Color(0xFF0F2A3D)
+            "almuerzo" -> Color(0xFF12384F)
+            "merienda" -> Color(0xFF14506A)
+            "cena" -> Color(0xFF0B3A2A)
+            else -> Color(0xFF111827)
+        }
+    } else {
+        colorPorTipoComida(tipo)
+    }
+    val colorTexto = if (modoOscuro) Color.White else colorTextoPorTipoComida(tipo)
     var mostrarIngredientes by remember { mutableStateOf(false) }
     var ingredientesNoGustan by remember { mutableStateOf<Set<String>>(emptySet()) }
 
@@ -2472,7 +3318,7 @@ fun TarjetaComidaDelDia(
         Dialog(onDismissRequest = { mostrarIngredientes = false }) {
             Card(
                 shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = tarjetaActual()),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
@@ -2480,14 +3326,14 @@ fun TarjetaComidaDelDia(
                         text = comida.nombre,
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp,
-                        color = VerdeMuyOscuro
+                        color = textoPrincipalActual()
                     )
 
                     Spacer(modifier = Modifier.height(6.dp))
 
                     Text(
                         text = "Marcá los ingredientes principales que no te gustan.",
-                        color = VerdeOscuro,
+                        color = textoSecundarioActual(),
                         fontSize = 14.sp
                     )
 
@@ -2515,7 +3361,7 @@ fun TarjetaComidaDelDia(
 
                             Text(
                                 text = ingrediente.replaceFirstChar { it.uppercase() },
-                                color = VerdeMuyOscuro
+                                color = textoPrincipalActual()
                             )
                         }
                     }
@@ -2611,6 +3457,7 @@ fun PantallaPlanComidas(
     val hoyNombre = nombreDiaSemanaActual()
 
     var todasLasComidas by remember { mutableStateOf<List<ComidaPlan>>(emptyList()) }
+    var planSupabase by remember { mutableStateOf<List<PlanComidaSupabase>>(emptyList()) }
     var cargandoComidas by remember { mutableStateOf(true) }
     var errorComidas by remember { mutableStateOf("") }
     var diaAbierto by remember { mutableStateOf(hoyNombre) }
@@ -2618,30 +3465,41 @@ fun PantallaPlanComidas(
     LaunchedEffect(Unit) {
         try {
             todasLasComidas = obtenerComidasDesdeSupabase()
+            planSupabase = obtenerPlanDesdeSupabase()
             errorComidas = ""
         } catch (e: Exception) {
             todasLasComidas = emptyList()
-            errorComidas = e.localizedMessage ?: "No se pudieron cargar las comidas desde Supabase."
+            errorComidas = mensajeRedKekeFit(e)
         } finally {
             cargandoComidas = false
         }
     }
 
-    val restriccionesDisponiblesEnComidas = todasLasComidas.flatMap { it.restricciones }.map { normalizarRestriccion(it) }.toSet()
-    val restriccionesUsuarioValidas = usuario.restricciones.map { normalizarRestriccion(it) }.filter { it in restriccionesDisponiblesEnComidas }
+    val restriccionesUsuarioValidas = usuario.restricciones.map { normalizarRestriccion(it) }.toSet()
 
     val comidasFiltradas = if (restriccionesUsuarioValidas.isEmpty()) {
         todasLasComidas
     } else {
         todasLasComidas.filter { comida ->
-            val restriccionesComida = comida.restricciones.map { normalizarRestriccion(it) }
-            restriccionesUsuarioValidas.all { restriccion -> restriccion in restriccionesComida }
-        }
+            val textoComida = (comida.restricciones + comida.ingredientes + listOf(comida.nombre, comida.tipo))
+                .joinToString(" ") { normalizarRestriccion(it) }
+            restriccionesUsuarioValidas.all { restriccion -> textoComida.contains(restriccion) }
+        }.ifEmpty { todasLasComidas }
     }
 
     val diasSemana = listOf("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")
     val tiposComida = listOf("desayuno", "almuerzo", "merienda", "cena")
     val comidasPorTipo = tiposComida.associateWith { tipo -> comidasFiltradas.filter { normalizarRestriccion(it.tipo) == tipo } }
+    val comidasPorId = todasLasComidas.associateBy { it.id }
+    val planHoy = planSupabase.filter { it.fecha == fechaHoyDispositivo() }
+    val planBase = if (planHoy.isNotEmpty()) planHoy else planSupabase
+    val usuarioPlanElegido = planBase.groupBy { it.idUsuario }.maxByOrNull { it.value.size }?.key ?: 0
+    val planPorTipo = planBase
+        .filter { usuarioPlanElegido == 0 || it.idUsuario == usuarioPlanElegido }
+        .associateBy { normalizarRestriccion(it.tipoComida) }
+    val planInteligente = remember(comidasFiltradas, usuario, resultado) {
+        generarPlanSemanalInteligenteKekeFit(usuario, resultado, comidasFiltradas)
+    }
 
     Scaffold(topBar = { TopAppBar(title = { Text("Plan de comidas") }) }) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize()) {
@@ -2649,16 +3507,20 @@ fun PantallaPlanComidas(
                 modifier = Modifier
                     .padding(paddingValues)
                     .fillMaxSize()
-                    .background(FondoVerdeClaro)
+                    .background(fondoPantallaActual())
                     .padding(16.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                Card(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+                Card(
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = tarjetaActual()),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Column(modifier = Modifier.padding(18.dp)) {
-                        Text("Objetivo calórico", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = VerdeMuyOscuro)
+                        Text("Objetivo calórico", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = textoPrincipalActual())
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("${resultado.calorias} kcal por día", color = VerdeOscuro)
-                        Text("Proteínas: ${resultado.proteinas} g", color = VerdeOscuro)
+                        Text("${resultado.calorias} kcal por día", color = textoSecundarioActual())
+                        Text("Proteínas: ${resultado.proteinas} g", color = textoSecundarioActual())
                     }
                 }
 
@@ -2666,23 +3528,29 @@ fun PantallaPlanComidas(
 
                 when {
                     cargandoComidas -> Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { IndicadorCargaVerde() }
-                    errorComidas.isNotBlank() -> Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F2FE)), modifier = Modifier.fillMaxWidth()) {
-                        Text(errorComidas, color = VerdeMuyOscuro, modifier = Modifier.padding(14.dp))
+                    errorComidas.isNotBlank() -> Card(colors = CardDefaults.cardColors(containerColor = tarjetaSuaveActual()), modifier = Modifier.fillMaxWidth()) {
+                        Text(errorComidas, color = textoPrincipalActual(), modifier = Modifier.padding(14.dp))
                     }
-                    todasLasComidas.isEmpty() -> Card(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-                        Text("No hay comidas cargadas en Supabase.", modifier = Modifier.padding(16.dp), color = Color.Gray)
+                    todasLasComidas.isEmpty() -> Card(colors = CardDefaults.cardColors(containerColor = tarjetaActual()), shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                        Text("No se recibieron comidas desde Supabase. Si en Table Editor sí hay filas, revisá RLS: la tabla comida2 necesita una policy SELECT para anon/authenticated o la app recibe una lista vacía.", modifier = Modifier.padding(16.dp), color = textoSecundarioActual())
                     }
-                    comidasFiltradas.isEmpty() -> Card(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-                        Text("No hay comidas disponibles para las restricciones seleccionadas.", modifier = Modifier.padding(16.dp), color = Color.Gray)
+                    comidasFiltradas.isEmpty() -> Card(colors = CardDefaults.cardColors(containerColor = tarjetaActual()), shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                        Text("No hay comidas disponibles para las restricciones seleccionadas.", modifier = Modifier.padding(16.dp), color = textoSecundarioActual())
                     }
                     else -> {
-                        Text("Plan semanal", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = VerdeMuyOscuro)
+                        Text("Plan semanal", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = textoPrincipalActual())
                         Spacer(modifier = Modifier.height(6.dp))
-                        Text("Hoy es $hoyNombre. Se despliega automáticamente el día actual y el plan se renueva con la fecha del dispositivo.", color = VerdeOscuro, fontSize = 14.sp)
+                        Text("Hoy es $hoyNombre. Se despliega automáticamente el día actual y el plan se renueva con la fecha del dispositivo.", color = textoSecundarioActual(), fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text("Rotación inteligente activa: el agente lee las comidas cargadas, tus restricciones, datos y objetivo para armar la semana.", color = textoSecundarioActual(), fontSize = 13.sp)
+                        if (planSupabase.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text("Plan2 detectado en Supabase: se prioriza para el día actual cuando coincide el tipo de comida.", color = textoSecundarioActual(), fontSize = 13.sp)
+                        }
                         if (hoyIndex == 6) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            Card(colors = CardDefaults.cardColors(containerColor = VerdeTextoSuave), shape = RoundedCornerShape(18.dp)) {
-                                Text("Plan finalizado: esperá hasta el lunes para iniciar una nueva semana.", color = VerdeMuyOscuro, modifier = Modifier.padding(14.dp))
+                            Card(colors = CardDefaults.cardColors(containerColor = tarjetaSuaveActual()), shape = RoundedCornerShape(18.dp)) {
+                                Text("Plan finalizado: esperá hasta el lunes para iniciar una nueva semana.", color = textoPrincipalActual(), modifier = Modifier.padding(14.dp))
                             }
                         }
                         Spacer(modifier = Modifier.height(12.dp))
@@ -2690,7 +3558,14 @@ fun PantallaPlanComidas(
                         diasSemana.forEachIndexed { diaIndex, dia ->
                             val abierto = diaAbierto == dia
                             val esHoy = diaIndex == hoyIndex
-                            val colorTarjeta by animateColorAsState(targetValue = if (abierto) Color.White else Color(0xFFE0F2FE), label = "colorTarjetaDia")
+                            val colorTarjeta by animateColorAsState(
+                                targetValue = if (modoOscuroActual()) {
+                                    if (abierto) Color(0xFF0F2A3D) else Color(0xFF102F46)
+                                } else {
+                                    if (abierto) Color.White else Color(0xFFE0F2FE)
+                                },
+                                label = "colorTarjetaDia"
+                            )
                             val elevacionTarjeta by animateDpAsState(targetValue = if (abierto) 8.dp else 2.dp, label = "elevacionTarjetaDia")
 
                             Card(
@@ -2711,8 +3586,8 @@ fun PantallaPlanComidas(
                                                 Spacer(modifier = Modifier.width(8.dp))
                                             }
                                             Column {
-                                                Text(if (esHoy) "$dia · HOY" else dia, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = VerdeMuyOscuro)
-                                                Text(if (abierto) "Plan desplegado" else "Tocar para ver comidas", color = VerdeOscuro, fontSize = 13.sp)
+                                                Text(if (esHoy) "$dia · HOY" else dia, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = textoPrincipalActual())
+                                                Text(if (abierto) "Plan desplegado" else "Tocar para ver comidas", color = textoSecundarioActual(), fontSize = 13.sp)
                                             }
                                         }
                                         Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = VerdePrincipal)
@@ -2726,7 +3601,9 @@ fun PantallaPlanComidas(
                                         Column(modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
                                             tiposComida.forEachIndexed { tipoIndex, tipo ->
                                                 val opciones = comidasPorTipo[tipo].orEmpty()
-                                                val comida = opciones.getOrNull((diaIndex + tipoIndex + Calendar.getInstance().get(Calendar.WEEK_OF_YEAR)) % opciones.size.coerceAtLeast(1))
+                                                val comidaDesdePlan = if (diaIndex == hoyIndex) planPorTipo[normalizarRestriccion(tipo)]?.let { comidasPorId[it.idComida] } else null
+                                                val comidaDelAgente = planInteligente[diaIndex to tipo]
+                                                val comida = comidaDesdePlan ?: comidaDelAgente ?: opciones.getOrNull((diaIndex + tipoIndex + Calendar.getInstance().get(Calendar.WEEK_OF_YEAR)) % opciones.size.coerceAtLeast(1))
                                                 TarjetaComidaDelDia(tipo = tipo, comida = comida)
                                             }
                                         }
@@ -2772,12 +3649,12 @@ fun TarjetaRachaInforme(
                     text = "$diasRacha días seguidos",
                     fontWeight = FontWeight.Bold,
                     fontSize = 22.sp,
-                    color = VerdeMuyOscuro
+                    color = textoPrincipalActual()
                 )
 
                 Text(
                     text = "Seguimiento del informe mensual",
-                    color = VerdeOscuro,
+                    color = textoSecundarioActual(),
                     fontSize = 13.sp
                 )
             }
@@ -2792,7 +3669,7 @@ fun TarjetaRachaInforme(
                 Box(contentAlignment = Alignment.Center) {
                     Text(
                         text = "$porcentaje%",
-                        color = VerdeMuyOscuro,
+                        color = textoPrincipalActual(),
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp
                     )
@@ -2812,6 +3689,10 @@ fun PantallaInformeMensual(
     val uid = FirebaseAuth.getInstance().currentUser?.uid ?: "local"
     val fechaHoy = fechaHoyDispositivo()
     val hoyIndex = indiceDiaSemanaActual()
+    val resultado = calcularPlanNutricional(usuario)
+
+    var vasosConsumidos by remember { mutableStateOf(cargarVasosConsumidosLocal(context, uid, fechaHoy)) }
+    var vasosMeta by remember { mutableStateOf(cargarMetaVasosLocal(context, uid, resultado.vasosMeta, fechaHoy)) }
 
     var todasLasComidas by remember { mutableStateOf<List<ComidaPlan>>(emptyList()) }
     var cargando by remember { mutableStateOf(true) }
@@ -2826,7 +3707,7 @@ fun PantallaInformeMensual(
             todasLasComidas = obtenerComidasDesdeSupabase()
             error = ""
         } catch (e: Exception) {
-            error = e.localizedMessage ?: "No se pudieron cargar las comidas para el informe."
+            error = mensajeRedKekeFit(e)
         } finally {
             cargando = false
         }
@@ -2856,21 +3737,57 @@ fun PantallaInformeMensual(
                 modifier = Modifier
                     .padding(paddingValues)
                     .fillMaxSize()
-                    .background(FondoVerdeClaro)
+                    .background(fondoPantallaActual())
                     .padding(16.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
+                Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = tarjetaActual()), modifier = Modifier.fillMaxWidth()) {
                     Row(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Informe de hoy", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = VerdeMuyOscuro)
-                            Text(if (estadoRacha.informeHoyEnviado) "Ya mandaste el informe. Volvé mañana para mantener tu racha." else "Completalo antes de las 12 de la noche para no perder la racha.", color = VerdeOscuro)
+                            Text("Informe de hoy", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = textoPrincipalActual())
+                            Text(if (estadoRacha.informeHoyEnviado) "Ya mandaste el informe. Volvé mañana para mantener tu racha." else "Completalo antes de las 12 de la noche para no perder la racha.", color = textoSecundarioActual())
                             Spacer(modifier = Modifier.height(6.dp))
                             Text("Racha: ${estadoRacha.dias} días", color = VerdePrincipal, fontWeight = FontWeight.Bold)
                         }
                         Surface(modifier = Modifier.size(76.dp).border(6.dp, VerdeSecundario.copy(alpha = 0.35f), CircleShape), shape = CircleShape, color = Color.White) {
-                            Box(contentAlignment = Alignment.Center) { Text("$porcentaje%", fontWeight = FontWeight.Bold, color = VerdeMuyOscuro) }
+                            Box(contentAlignment = Alignment.Center) { Text("$porcentaje%", fontWeight = FontWeight.Bold, color = textoPrincipalActual()) }
                         }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = tarjetaActual()), modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Agua de hoy", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = textoPrincipalActual())
+                        Text("Marcá los vasos que tomaste. También queda guardado localmente para el seguimiento.", color = textoSecundarioActual(), fontSize = 13.sp)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedButton(onClick = {
+                                reproducirClickSuave(context)
+                                vasosConsumidos = (vasosConsumidos - 1).coerceAtLeast(0)
+                                guardarAguaLocal(context, uid, vasosConsumidos, vasosMeta, fechaHoy)
+                            }) { Text("-") }
+                            Text("$vasosConsumidos / $vasosMeta vasos", color = textoPrincipalActual(), fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                            Button(onClick = {
+                                reproducirClickSuave(context)
+                                vasosConsumidos = (vasosConsumidos + 1).coerceAtMost(30)
+                                guardarAguaLocal(context, uid, vasosConsumidos, vasosMeta, fechaHoy)
+                            }, colors = ButtonDefaults.buttonColors(containerColor = VerdePrincipal)) { Text("+") }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = vasosMeta.toString(),
+                            onValueChange = { nuevo ->
+                                val meta = nuevo.filter { it.isDigit() }.toIntOrNull() ?: vasosMeta
+                                vasosMeta = meta.coerceIn(1, 30)
+                                guardarAguaLocal(context, uid, vasosConsumidos, vasosMeta, fechaHoy)
+                            },
+                            label = { Text("Meta de vasos") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
                     }
                 }
 
@@ -2879,6 +3796,7 @@ fun PantallaInformeMensual(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     Button(
                         onClick = {
+                            reproducirClickSuave(context)
                             crearPdfInforme(context, uid, porcentaje, comidasCumplidas, comidasReales)
                         },
                         modifier = Modifier.weight(1f),
@@ -2888,9 +3806,14 @@ fun PantallaInformeMensual(
 
                     Button(
                         onClick = {
+                            reproducirClickSuave(context)
                             guardarInformeLocal(context, uid, fechaHoy, comidasCumplidas, comidasReales)
-                            estadoRacha = registrarInformeHoy(context, uid)
-                            Toast.makeText(context, "Informe enviado. Racha actualizada.", Toast.LENGTH_SHORT).show()
+                            guardarAguaLocal(context, uid, vasosConsumidos, vasosMeta, fechaHoy)
+                            val nuevaRacha = registrarInformeHoy(context, uid)
+                            estadoRacha = nuevaRacha
+                            guardarUidWidget(context, uid, usuario, resultado, nuevaRacha)
+                            actualizarWidgetsKekeFit(context)
+                            Toast.makeText(context, "Informe enviado. Racha y widget actualizados.", Toast.LENGTH_SHORT).show()
                         },
                         enabled = puedeEnviar && !estadoRacha.informeHoyEnviado,
                         modifier = Modifier.weight(1f),
@@ -2920,17 +3843,17 @@ fun PantallaInformeMensual(
 
                 when {
                     cargando -> Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { IndicadorCargaVerde() }
-                    error.isNotBlank() -> Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F2FE)), modifier = Modifier.fillMaxWidth()) { Text(error, color = VerdeMuyOscuro, modifier = Modifier.padding(14.dp)) }
+                    error.isNotBlank() -> Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F2FE)), modifier = Modifier.fillMaxWidth()) { Text(error, color = textoPrincipalActual(), modifier = Modifier.padding(14.dp)) }
                     else -> {
                         val comidasDelDia = registros.filter { it.dia == diaVisible }
                         val tituloDia = listOf("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo").getOrElse(diaVisible - 1) { "Día $diaVisible" }
-                        Text(if (diaVisible == hoyIndex + 1) "$tituloDia · HOY" else tituloDia, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = VerdeMuyOscuro, modifier = Modifier.padding(top = 8.dp, bottom = 6.dp))
+                        Text(if (diaVisible == hoyIndex + 1) "$tituloDia · HOY" else tituloDia, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = textoPrincipalActual(), modifier = Modifier.padding(top = 8.dp, bottom = 6.dp))
 
                         comidasDelDia.forEach { registro ->
                             val key = "${registro.dia}-${registro.tipo}"
                             val cumplida = key in comidasCumplidas
                             val comidaReal = comidasReales[key].orEmpty()
-                            Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
+                            Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = tarjetaActual()), modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
                                 Column(modifier = Modifier.padding(14.dp)) {
                                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                         Checkbox(
@@ -2941,8 +3864,8 @@ fun PantallaInformeMensual(
                                             }
                                         )
                                         Column(modifier = Modifier.weight(1f)) {
-                                            Text(tituloTipoComida(registro.tipo), fontWeight = FontWeight.Bold, color = VerdeMuyOscuro)
-                                            Text(registro.comidaRecomendada, color = VerdeOscuro, fontSize = 13.sp)
+                                            Text(tituloTipoComida(registro.tipo), fontWeight = FontWeight.Bold, color = textoPrincipalActual())
+                                            Text(registro.comidaRecomendada, color = textoSecundarioActual(), fontSize = 13.sp)
                                         }
                                         if (cumplida) Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF22C55E))
                                     }
@@ -2976,8 +3899,11 @@ fun PantallaInformeMensual(
 fun PantallaAyudaFeedback(
     onVolver: () -> Unit
 ) {
+    val context = LocalContext.current
+    val auth = remember { FirebaseAuth.getInstance() }
     var feedback by remember { mutableStateOf("") }
     var mensaje by remember { mutableStateOf("") }
+    var enviando by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -2988,12 +3914,13 @@ fun PantallaAyudaFeedback(
             modifier = Modifier
                 .padding(paddingValues)
                 .fillMaxSize()
-                .background(FondoVerdeClaro)
+                .background(fondoPantallaActual())
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
             Card(
                 shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = tarjetaActual()),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
@@ -3001,15 +3928,15 @@ fun PantallaAyudaFeedback(
                         text = "¿Cómo usar Keke Fit?",
                         fontWeight = FontWeight.Bold,
                         fontSize = 22.sp,
-                        color = VerdeMuyOscuro
+                        color = textoPrincipalActual()
                     )
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    Text("1. Completá tu perfil para calcular tus datos.", color = VerdeOscuro)
-                    Text("2. Entrá al plan de comidas para ver tus recomendaciones.", color = VerdeOscuro)
-                    Text("3. Usá el informe para marcar qué comidas cumpliste.", color = VerdeOscuro)
-                    Text("4. Hablá con KekeBot si necesitás ideas o ayuda.", color = VerdeOscuro)
+                    Text("1. Completá tu perfil para calcular tus datos.", color = textoSecundarioActual())
+                    Text("2. Entrá al plan de comidas para ver tus recomendaciones.", color = textoSecundarioActual())
+                    Text("3. Usá el informe para marcar qué comidas cumpliste.", color = textoSecundarioActual())
+                    Text("4. Hablá con KekeBot si necesitás ideas o ayuda.", color = textoSecundarioActual())
                 }
             }
 
@@ -3017,6 +3944,7 @@ fun PantallaAyudaFeedback(
 
             Card(
                 shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = tarjetaActual()),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
@@ -3024,7 +3952,7 @@ fun PantallaAyudaFeedback(
                         text = "Enviar feedback",
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp,
-                        color = VerdeMuyOscuro
+                        color = textoPrincipalActual()
                     )
 
                     Spacer(modifier = Modifier.height(10.dp))
@@ -3044,23 +3972,55 @@ fun PantallaAyudaFeedback(
 
                     Button(
                         onClick = {
-                            mensaje = if (feedback.isBlank()) {
-                                "Escribí un comentario antes de enviar."
-                            } else {
-                                feedback = ""
-                                "Feedback guardado localmente. Después podés conectarlo con Firestore."
+                            val texto = feedback.trim()
+                            if (texto.isBlank()) {
+                                mensaje = "Escribí un comentario antes de enviar."
+                                return@Button
                             }
+
+                            enviando = true
+                            mensaje = "Enviando feedback..."
+
+                            val uid = auth.currentUser?.uid ?: "sin_usuario"
+                            val email = auth.currentUser?.email ?: "sin_email"
+                            val data = hashMapOf(
+                                "message" to texto,
+                                "createdAt" to FieldValue.serverTimestamp(),
+                                "status" to "pending",
+                                "type" to "feedback",
+                                "screen" to "ayuda",
+                                "rating" to 0,
+                                "userUid" to uid,
+                                "userEmail" to email
+                            )
+
+                            FirebaseFirestore.getInstance()
+                                .collection("feedback")
+                                .add(data)
+                                .addOnSuccessListener {
+                                    feedback = ""
+                                    enviando = false
+                                    mensaje = "Feedback enviado a Firestore."
+                                    Toast.makeText(context, "Feedback enviado", Toast.LENGTH_SHORT).show()
+                                }
+                                .addOnFailureListener { e ->
+                                    enviando = false
+                                    mensaje = "No se pudo guardar en Firestore: ${e.localizedMessage ?: "error desconocido"}"
+                                }
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(18.dp),
+                        enabled = !enviando,
                         colors = ButtonDefaults.buttonColors(containerColor = VerdePrincipal)
                     ) {
-                        Text("Enviar feedback")
+                        Text(if (enviando) "Enviando..." else "Enviar feedback")
                     }
+
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     if (mensaje.isNotBlank()) {
                         Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = mensaje, color = VerdeOscuro)
+                        Text(text = mensaje, color = textoSecundarioActual())
                     }
                 }
             }
@@ -3069,12 +4029,12 @@ fun PantallaAyudaFeedback(
 
             Card(
                 shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)),
+                colors = CardDefaults.cardColors(containerColor = tarjetaSuaveActual()),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
                     text = "Aviso médico: esta app es de uso suplementario y no reemplaza a un nutricionista. Ante consultas de salud, contactá a un profesional.",
-                    color = Color(0xFF9A3412),
+                    color = if (modoOscuroActual()) Color(0xFFFDE68A) else Color(0xFF9A3412),
                     modifier = Modifier.padding(14.dp),
                     fontSize = 14.sp
                 )
@@ -3206,7 +4166,7 @@ fun PreviewPantallaHomeProfesional() {
         colorScheme = lightColorScheme(
             primary = VerdePrincipal,
             secondary = VerdeSecundario,
-            background = FondoVerdeClaro,
+            background = if (KekeFitVisualState.modoOscuro) Color(0xFF071827) else FondoVerdeClaro,
             surface = Color.White
         )
     ) {
@@ -3235,3 +4195,106 @@ fun PreviewPantallaHomeProfesional() {
         )
     }
 }
+
+/*
+ * Helpers del widget KekeFit.
+ * Guarda datos reales para que el widget muestre nombre, racha y calorías.
+ */
+fun guardarUidWidget(
+    context: Context,
+    uid: String,
+    usuario: UsuarioPerfil? = null,
+    resultado: ResultadoNutricional? = null,
+    estadoRacha: EstadoRacha? = null
+) {
+    val appContext = context.applicationContext
+    val prefs = appContext.getSharedPreferences("keke_fit_widget_prefs", Context.MODE_PRIVATE)
+
+    val nombreDesdeFirebase = FirebaseAuth.getInstance().currentUser?.displayName
+        ?.substringBefore(" ")
+        ?.trim()
+        .orEmpty()
+
+    val nombreFinal = usuario?.nombre
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?: nombreDesdeFirebase.takeIf { it.isNotBlank() }
+        ?: "KekeFit"
+
+    val rachaFinal = estadoRacha?.dias ?: cargarEstadoRacha(appContext, uid).dias
+    val caloriasFinal = resultado?.calorias ?: prefs.getInt("calorias_hoy", 0)
+
+    prefs.edit()
+        .putString("uid_usuario", uid)
+        .putString("nombre_usuario", nombreFinal)
+        .putInt("dias_racha", rachaFinal.coerceAtLeast(0))
+        .putInt("calorias_hoy", caloriasFinal.coerceAtLeast(0))
+        .putLong("ultima_actualizacion", System.currentTimeMillis())
+        .apply()
+}
+
+fun actualizarWidgetsKekeFit(context: Context) {
+    try {
+        val appContext = context.applicationContext
+        val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(appContext)
+
+        val componentName = android.content.ComponentName(
+            appContext,
+            KekeFitWidgetProvider::class.java
+        )
+
+        val widgetIds = appWidgetManager.getAppWidgetIds(componentName)
+
+        if (widgetIds.isNotEmpty()) {
+            val intent = android.content.Intent(android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE).apply {
+                component = componentName
+                putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_IDS, widgetIds)
+            }
+
+            appContext.sendBroadcast(intent)
+        }
+    } catch (e: Exception) {
+        Log.e("KEKE_WIDGET", "No se pudieron actualizar los widgets.", e)
+    }
+}
+
+fun pedirAgregarWidgetKekeFit(context: Context) {
+    try {
+        val appContext = context.applicationContext
+
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) {
+            Toast.makeText(
+                appContext,
+                "Para agregar el widget, mantené presionada la pantalla de inicio y elegí Widgets.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(appContext)
+
+        if (!appWidgetManager.isRequestPinAppWidgetSupported) {
+            Toast.makeText(
+                appContext,
+                "Tu launcher no permite agregar el widget automáticamente. Agregalo desde Widgets.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        val componentName = android.content.ComponentName(
+            appContext,
+            KekeFitWidgetProvider::class.java
+        )
+
+        appWidgetManager.requestPinAppWidget(componentName, null, null)
+    } catch (e: Exception) {
+        Log.e("KEKE_WIDGET", "No se pudo pedir agregar el widget.", e)
+        Toast.makeText(
+            context.applicationContext,
+            "No se pudo abrir la opción para agregar el widget.",
+            Toast.LENGTH_LONG
+        ).show()
+    }
+}
+
