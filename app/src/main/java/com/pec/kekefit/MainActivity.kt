@@ -131,6 +131,8 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ServerValue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -731,11 +733,11 @@ fun condicionesFallbackOfflineKekeFit(): List<String> = listOf(
 fun esErrorRedKekeFit(e: Exception): Boolean {
     val texto = (e.localizedMessage ?: e.message ?: "").lowercase()
     return e is java.net.UnknownHostException ||
-        e is java.net.SocketTimeoutException ||
-        texto.contains("unable to resolve host") ||
-        texto.contains("failed to connect") ||
-        texto.contains("timeout") ||
-        texto.contains("no address associated")
+            e is java.net.SocketTimeoutException ||
+            texto.contains("unable to resolve host") ||
+            texto.contains("failed to connect") ||
+            texto.contains("timeout") ||
+            texto.contains("no address associated")
 }
 
 fun mensajeRedKekeFit(e: Exception): String {
@@ -1562,7 +1564,7 @@ fun PantallaFormularioPerfil(
     val generos = listOf("Masculino", "Femenino")
 
     if (mostrarFechaPicker) {
-        DatePickerDialog(
+        val dialog = DatePickerDialog(
             context,
             { _, year, month, dayOfMonth ->
                 fechaNacimiento = "%02d/%02d/%04d".format(dayOfMonth, month + 1, year)
@@ -1575,7 +1577,10 @@ fun PantallaFormularioPerfil(
             calendario.get(Calendar.YEAR),
             calendario.get(Calendar.MONTH),
             calendario.get(Calendar.DAY_OF_MONTH)
-        ).show()
+        )
+
+        dialog.datePicker.maxDate = System.currentTimeMillis()
+        dialog.show()
     }
 
     Column(
@@ -3983,9 +3988,9 @@ fun PantallaAyudaFeedback(
 
                             val uid = auth.currentUser?.uid ?: "sin_usuario"
                             val email = auth.currentUser?.email ?: "sin_email"
-                            val data = hashMapOf(
+                            val data = hashMapOf<String, Any>(
                                 "message" to texto,
-                                "createdAt" to FieldValue.serverTimestamp(),
+                                "createdAt" to ServerValue.TIMESTAMP,
                                 "status" to "pending",
                                 "type" to "feedback",
                                 "screen" to "ayuda",
@@ -3994,18 +3999,20 @@ fun PantallaAyudaFeedback(
                                 "userEmail" to email
                             )
 
-                            FirebaseFirestore.getInstance()
-                                .collection("feedback")
-                                .add(data)
+                            FirebaseDatabase.getInstance()
+                                .reference
+                                .child("feedback")
+                                .push()
+                                .setValue(data)
                                 .addOnSuccessListener {
                                     feedback = ""
                                     enviando = false
-                                    mensaje = "Feedback enviado a Firestore."
+                                    mensaje = "Feedback enviado."
                                     Toast.makeText(context, "Feedback enviado", Toast.LENGTH_SHORT).show()
                                 }
                                 .addOnFailureListener { e ->
                                     enviando = false
-                                    mensaje = "No se pudo guardar en Firestore: ${e.localizedMessage ?: "error desconocido"}"
+                                    mensaje = "No se pudo guardar el feedback: ${e.localizedMessage ?: "error desconocido"}"
                                 }
                         },
                         modifier = Modifier.fillMaxWidth(),
